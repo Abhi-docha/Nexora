@@ -1,0 +1,412 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Enterprise application user profile synchronized with Firebase Auth",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 200 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "accountStatus": { "type": "string", "enum": ["ACTIVE", "SUSPENDED", "ARCHIVED"] },
+        "title": { "type": "string", "maxLength": 100 },
+        "department": { "type": "string", "maxLength": 100 },
+        "timezone": { "type": "string", "maxLength": 60 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "lastSeenAt": { "type": "string", "format": "date-time" },
+        "schemaVersion": { "type": "integer" }
+      },
+      "required": ["uid", "email", "accountStatus", "createdAt", "updatedAt"]
+    },
+    "Organization": {
+      "title": "Organization",
+      "description": "Multi-tenant enterprise organization account",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "slug": { "type": "string", "maxLength": 60 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "planId": { "type": "string", "enum": ["FREE", "STARTER", "GROWTH", "SCALE", "ENTERPRISE"] },
+        "status": { "type": "string", "enum": ["ACTIVE", "SUSPENDED", "ARCHIVED"] },
+        "billingStatus": { "type": "string", "enum": ["ACTIVE", "PAST_DUE", "CANCELLED", "INACTIVE", "EXPIRED", "TRIAL"] },
+        "subscriptionStatus": { "type": "string", "maxLength": 50 },
+        "dodoCustomerId": { "type": "string", "maxLength": 100 },
+        "dodoSubscriptionId": { "type": "string", "maxLength": 100 },
+        "industry": { "type": "string", "maxLength": 100 },
+        "size": { "type": "string", "maxLength": 50 },
+        "timezone": { "type": "string", "maxLength": 60 },
+        "currency": { "type": "string", "maxLength": 10 },
+        "enabledModules": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "schemaVersion": { "type": "integer" }
+      },
+      "required": ["id", "name", "slug", "ownerUid", "planId", "status", "createdAt", "updatedAt"]
+    },
+    "Member": {
+      "title": "Member",
+      "description": "Organization membership and RBAC role assignment",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "orgId": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["OWNER", "ORG_ADMIN", "MANAGER", "PROJECT_MANAGER", "TEAM_LEAD", "ANALYST", "MEMBER", "VIEWER", "GUEST"] },
+        "email": { "type": "string", "maxLength": 200 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "department": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "enum": ["ACTIVE", "SUSPENDED"] },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "orgId", "role", "email", "status", "joinedAt"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Strategic business or operational project",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orgId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "key": { "type": "string", "maxLength": 20 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["PLANNING", "ACTIVE", "AT_RISK", "BLOCKED", "COMPLETED", "ARCHIVED"] },
+        "health": { "type": "string", "enum": ["HEALTHY", "WATCH", "AT_RISK", "BLOCKED", "COMPLETED"] },
+        "priority": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "managerUid": { "type": "string", "maxLength": 128 },
+        "department": { "type": "string", "maxLength": 100 },
+        "budget": { "type": "number" },
+        "spent": { "type": "number" },
+        "completionPercent": { "type": "number" },
+        "targetStartDate": { "type": "string", "maxLength": 30 },
+        "targetEndDate": { "type": "string", "maxLength": 30 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "orgId", "name", "status", "health", "priority", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Actionable work item or assignment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orgId": { "type": "string", "maxLength": 128 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 250 },
+        "description": { "type": "string", "maxLength": 3000 },
+        "status": { "type": "string", "enum": ["TODO", "IN_PROGRESS", "REVIEW", "BLOCKED", "DONE", "ARCHIVED"] },
+        "priority": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "URGENT"] },
+        "assigneeUid": { "type": "string", "maxLength": 128 },
+        "reporterUid": { "type": "string", "maxLength": 128 },
+        "dueDate": { "type": "string", "maxLength": 30 },
+        "estimatedHours": { "type": "number" },
+        "actualHours": { "type": "number" },
+        "tags": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "orgId", "title", "status", "priority", "reporterUid", "createdAt", "updatedAt"]
+    },
+    "Workflow": {
+      "title": "Workflow",
+      "description": "Visual multi-step process workflow definition",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orgId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["DRAFT", "PUBLISHED", "ARCHIVED"] },
+        "version": { "type": "integer" },
+        "nodes": { "type": "array" },
+        "edges": { "type": "array" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "orgId", "name", "status", "createdBy", "createdAt", "updatedAt"]
+    },
+    "Request": {
+      "title": "Request",
+      "description": "Cross-department approval or operational request",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orgId": { "type": "string", "maxLength": 128 },
+        "requestType": { "type": "string", "enum": ["ACCESS", "PURCHASE", "PROJECT", "LEAVE", "RESOURCE", "OPS", "CUSTOM"] },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["DRAFT", "SUBMITTED", "IN_REVIEW", "APPROVED", "REJECTED", "CANCELLED", "COMPLETED"] },
+        "priority": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "URGENT"] },
+        "requesterUid": { "type": "string", "maxLength": 128 },
+        "assignedApproverUid": { "type": "string", "maxLength": 128 },
+        "amount": { "type": "number" },
+        "decisionNotes": { "type": "string", "maxLength": 1000 },
+        "submittedAt": { "type": "string", "maxLength": 30 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "orgId", "requestType", "title", "status", "priority", "requesterUid", "createdAt", "updatedAt"]
+    },
+    "Goal": {
+      "title": "Goal",
+      "description": "Strategic OKR or organization target",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orgId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "level": { "type": "string", "enum": ["COMPANY", "DEPARTMENT", "TEAM", "INDIVIDUAL"] },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "department": { "type": "string", "maxLength": 100 },
+        "period": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "enum": ["ON_TRACK", "AT_RISK", "BEHIND", "ACHIEVED", "CLOSED"] },
+        "confidence": { "type": "number" },
+        "progress": { "type": "number" },
+        "targetValue": { "type": "number" },
+        "currentValue": { "type": "number" },
+        "unit": { "type": "string", "maxLength": 30 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "orgId", "title", "level", "ownerUid", "status", "progress", "createdAt", "updatedAt"]
+    },
+    "Incident": {
+      "title": "Incident",
+      "description": "Operational disruption or service incident war room record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orgId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 3000 },
+        "severity": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+        "status": { "type": "string", "enum": ["OPEN", "INVESTIGATING", "MITIGATING", "MONITORING", "RESOLVED", "CLOSED"] },
+        "commanderUid": { "type": "string", "maxLength": 128 },
+        "affectedService": { "type": "string", "maxLength": 100 },
+        "rootCause": { "type": "string", "maxLength": 2000 },
+        "mitigation": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "orgId", "title", "severity", "status", "commanderUid", "createdAt", "updatedAt"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "B2B client account or CRM entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orgId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "industry": { "type": "string", "maxLength": 100 },
+        "tier": { "type": "string", "enum": ["ENTERPRISE", "MID_MARKET", "GROWTH", "STANDARD"] },
+        "status": { "type": "string", "enum": ["LEAD", "QUALIFIED", "ACTIVE", "CHURN_RISK", "INACTIVE"] },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "annualValue": { "type": "number" },
+        "website": { "type": "string", "maxLength": 255 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "orgId", "name", "status", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "Vendor": {
+      "title": "Vendor",
+      "description": "External supplier or vendor register record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orgId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "category": { "type": "string", "maxLength": 100 },
+        "criticality": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+        "status": { "type": "string", "enum": ["ACTIVE", "UNDER_REVIEW", "EXPIRING", "TERMINATED"] },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "contractValue": { "type": "number" },
+        "renewalDate": { "type": "string", "maxLength": 30 },
+        "riskLevel": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "documentUrl": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "orgId", "name", "criticality", "status", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "Asset": {
+      "title": "Asset",
+      "description": "Organization physical or software license asset",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orgId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "type": { "type": "string", "enum": ["HARDWARE", "SOFTWARE", "LICENSE", "EQUIPMENT", "FACILITY"] },
+        "assignedUid": { "type": "string", "maxLength": 128 },
+        "department": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "enum": ["IN_USE", "AVAILABLE", "MAINTENANCE", "RETIRED"] },
+        "serialNumber": { "type": "string", "maxLength": 100 },
+        "renewalDate": { "type": "string", "maxLength": 30 },
+        "cost": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "orgId", "name", "type", "status", "createdAt", "updatedAt"]
+    },
+    "KnowledgeArticle": {
+      "title": "KnowledgeArticle",
+      "description": "Operational standard operating procedure or knowledge article",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orgId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "maxLength": 100 },
+        "content": { "type": "string", "maxLength": 15000 },
+        "status": { "type": "string", "enum": ["DRAFT", "REVIEW", "PUBLISHED", "ARCHIVED"] },
+        "authorUid": { "type": "string", "maxLength": 128 },
+        "version": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "orgId", "title", "category", "status", "authorUid", "createdAt", "updatedAt"]
+    },
+    "Meeting": {
+      "title": "Meeting",
+      "description": "Executive meeting and institutional decision register",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orgId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "date": { "type": "string", "maxLength": 30 },
+        "department": { "type": "string", "maxLength": 100 },
+        "agenda": { "type": "string", "maxLength": 2000 },
+        "notes": { "type": "string", "maxLength": 5000 },
+        "decisions": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "orgId", "title", "date", "createdAt", "updatedAt"]
+    },
+    "KPI": {
+      "title": "KPI",
+      "description": "Operational business intelligence performance indicator",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orgId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "category": { "type": "string", "maxLength": 100 },
+        "target": { "type": "number" },
+        "current": { "type": "number" },
+        "unit": { "type": "string", "maxLength": 30 },
+        "direction": { "type": "string", "enum": ["INCREASE", "DECREASE"] },
+        "status": { "type": "string", "enum": ["NORMAL", "WARNING", "CRITICAL"] },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "orgId", "name", "target", "current", "unit", "status", "createdAt", "updatedAt"]
+    },
+    "ActivityEvent": {
+      "title": "ActivityEvent",
+      "description": "Append-only operational audit log item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orgId": { "type": "string", "maxLength": 128 },
+        "entityType": { "type": "string", "maxLength": 50 },
+        "entityId": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string", "maxLength": 100 },
+        "actorUid": { "type": "string", "maxLength": 128 },
+        "actorName": { "type": "string", "maxLength": 100 },
+        "actorEmail": { "type": "string", "maxLength": 200 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "orgId", "entityType", "entityId", "action", "actorUid", "timestamp"]
+    },
+    "TestConnection": {
+      "title": "TestConnection",
+      "description": "Firestore health check document",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "maxLength": 50 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "/test/{testId}": {
+      "schema": { "$ref": "#/entities/TestConnection" },
+      "description": "System health connectivity check"
+    },
+    "/users/{uid}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Application user account profile synchronized with Firebase Auth"
+    },
+    "/organizations/{orgId}": {
+      "schema": { "$ref": "#/entities/Organization" },
+      "description": "Enterprise tenant record"
+    },
+    "/organizations/{orgId}/members/{uid}": {
+      "schema": { "$ref": "#/entities/Member" },
+      "description": "Organization membership and RBAC role"
+    },
+    "/organizations/{orgId}/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/Project" },
+      "description": "Projects belonging to the organization"
+    },
+    "/organizations/{orgId}/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/Task" },
+      "description": "Tasks belonging to the organization"
+    },
+    "/organizations/{orgId}/workflows/{workflowId}": {
+      "schema": { "$ref": "#/entities/Workflow" },
+      "description": "Workflow definitions"
+    },
+    "/organizations/{orgId}/requests/{requestId}": {
+      "schema": { "$ref": "#/entities/Request" },
+      "description": "Universal requests and approval workflows"
+    },
+    "/organizations/{orgId}/goals/{goalId}": {
+      "schema": { "$ref": "#/entities/Goal" },
+      "description": "Organizational goals and OKRs"
+    },
+    "/organizations/{orgId}/incidents/{incidentId}": {
+      "schema": { "$ref": "#/entities/Incident" },
+      "description": "Incident management and war room"
+    },
+    "/organizations/{orgId}/customers/{customerId}": {
+      "schema": { "$ref": "#/entities/Customer" },
+      "description": "Customer accounts CRM"
+    },
+    "/organizations/{orgId}/vendors/{vendorId}": {
+      "schema": { "$ref": "#/entities/Vendor" },
+      "description": "Vendor registry"
+    },
+    "/organizations/{orgId}/assets/{assetId}": {
+      "schema": { "$ref": "#/entities/Asset" },
+      "description": "Assets register"
+    },
+    "/organizations/{orgId}/knowledgeArticles/{articleId}": {
+      "schema": { "$ref": "#/entities/KnowledgeArticle" },
+      "description": "Knowledge base SOP articles"
+    },
+    "/organizations/{orgId}/meetings/{meetingId}": {
+      "schema": { "$ref": "#/entities/Meeting" },
+      "description": "Meetings and institutional decision records"
+    },
+    "/organizations/{orgId}/kpis/{kpiId}": {
+      "schema": { "$ref": "#/entities/KPI" },
+      "description": "Key performance indicators"
+    },
+    "/organizations/{orgId}/activityEvents/{eventId}": {
+      "schema": { "$ref": "#/entities/ActivityEvent" },
+      "description": "Activity timeline events"
+    }
+  }
+}

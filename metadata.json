@@ -1,0 +1,6 @@
+{
+  "name": "NEXORA - Enterprise Operations Cloud",
+  "description": "Enterprise Operations Cloud: multi-tenant SaaS operating system integrating projects, workflows, requests, goals, CRM, vendors, assets, incidents, knowledge, and analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

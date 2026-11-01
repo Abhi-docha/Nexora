@@ -1,0 +1,474 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // NEXORA - Enterprise Operations Cloud
+    // Authoritative Zero-Trust Multi-Tenant Security Rules
+    // =========================================================================
+
+    // Default deny all access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Health / connectivity check
+    match /test/{testId} {
+      allow read: if true;
+    }
+
+    // =========================================================================
+    // PLATFORM ADMIN CONFIGURATION
+    // Replace YOUR_PLATFORM_ADMIN_UID_1 with your real Firebase Authentication UID.
+    // To set up platform administrator access:
+    // 1. Sign in with Google to create your account in Firebase Authentication.
+    // 2. Locate your UID in the Firebase Authentication console.
+    // 3. Replace the placeholder below with your real UID.
+    // 4. Deploy these rules via Firebase CLI: firebase deploy --only firestore:rules
+    // =========================================================================
+    function isPlatformAdmin() {
+      return isSignedIn() && (
+        request.auth.uid == "0FQhenLKBbdNW6cXYNgenoWYahO2" ||
+        request.auth.uid == "REPLACE_WITH_REAL_PLATFORM_ADMIN_UID" ||
+        request.auth.uid == "YOUR_PLATFORM_ADMIN_UID_1" ||
+        (request.auth.token.email != null && 
+         (request.auth.token.email == "abhi30382.AK@gmail.com" || 
+          request.auth.token.email == "abhi30382.ak@gmail.com" ||
+          request.auth.token.email.lower() == "abhi30382.ak@gmail.com") && 
+         request.auth.token.email_verified == true) ||
+        exists(/databases/$(database)/documents/platform/admins/users/$(request.auth.uid))
+      );
+    }
+
+    // =========================================================================
+    // CORE SECURITY PRIMITIVES & HELPERS
+    // =========================================================================
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Multi-tenant Org Member Verification
+    function isOrgMember(orgId) {
+      return isSignedIn() && (
+        isPlatformAdmin() ||
+        exists(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/organizations/$(orgId)) &&
+         get(/databases/$(database)/documents/organizations/$(orgId)).data.ownerUid == request.auth.uid)
+      );
+    }
+
+    function getMemberDoc(orgId) {
+      return get(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid)).data;
+    }
+
+    function isOrgOwner(orgId) {
+      return isSignedIn() && (
+        isPlatformAdmin() ||
+        (exists(/databases/$(database)/documents/organizations/$(orgId)) &&
+         get(/databases/$(database)/documents/organizations/$(orgId)).data.ownerUid == request.auth.uid) ||
+        (exists(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid)) &&
+         getMemberDoc(orgId).role == 'OWNER')
+      );
+    }
+
+    function isOrgAdmin(orgId) {
+      return isSignedIn() && (
+        isPlatformAdmin() ||
+        isOrgOwner(orgId) ||
+        (exists(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid)) &&
+         (getMemberDoc(orgId).role == 'OWNER' || getMemberDoc(orgId).role == 'ORG_ADMIN'))
+      );
+    }
+
+    function isOrgManager(orgId) {
+      return isSignedIn() && (
+        isOrgAdmin(orgId) ||
+        (exists(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid)) &&
+         (getMemberDoc(orgId).role == 'MANAGER' || getMemberDoc(orgId).role == 'PROJECT_MANAGER' || getMemberDoc(orgId).role == 'TEAM_LEAD'))
+      );
+    }
+
+    function isUserActive(orgId) {
+      return isPlatformAdmin() ||
+        (exists(/databases/$(database)/documents/organizations/$(orgId)) &&
+         get(/databases/$(database)/documents/organizations/$(orgId)).data.ownerUid == request.auth.uid) ||
+        (exists(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid)) &&
+         getMemberDoc(orgId).status == 'ACTIVE');
+    }
+
+    // =========================================================================
+    // USERS COLLECTION: /users/{userId}
+    // Application user profile. Normal users can read and write only their own profile.
+    // Platform administrators can inspect profiles.
+    // =========================================================================
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isPlatformAdmin();
+      allow list: if isPlatformAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+
+      allow create: if isOwner(userId) &&
+        isValidId(userId) &&
+        incoming().uid == request.auth.uid &&
+        incoming().email is string && incoming().email.size() <= 200 &&
+        incoming().accountStatus in ['ACTIVE', 'SUSPENDED'] &&
+        (!('isPlatformAdmin' in incoming()) || incoming().isPlatformAdmin == false);
+
+      allow update: if (isOwner(userId) &&
+        incoming().uid == existing().uid &&
+        incoming().email == existing().email &&
+        // Normal user cannot grant themselves platform administrator status or change accountStatus
+        (!('isPlatformAdmin' in incoming()) || incoming().isPlatformAdmin == existing().isPlatformAdmin) &&
+        (!('accountStatus' in incoming()) || incoming().accountStatus == existing().accountStatus)
+      ) || isPlatformAdmin();
+
+      allow delete: if isPlatformAdmin();
+
+      match /preferences/{prefId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // =========================================================================
+    // ORGANIZATIONS COLLECTION: /organizations/{orgId}
+    // Tenant boundaries are enforced strictly by path and membership.
+    // =========================================================================
+    match /organizations/{orgId} {
+      allow get: if isOrgMember(orgId) || isPlatformAdmin();
+      allow list: if isPlatformAdmin();
+
+      // Only signed-in users can create an organization, setting themselves as initial owner
+      allow create: if isSignedIn() &&
+        isValidId(orgId) &&
+        incoming().id == orgId &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 150 &&
+        incoming().slug is string && incoming().slug.size() > 0 && incoming().slug.size() <= 60 &&
+        incoming().planId == 'FREE' &&
+        incoming().status in ['ACTIVE', 'SUSPENDED', 'ARCHIVED'] &&
+        (!('dodoCustomerId' in incoming())) &&
+        (!('dodoSubscriptionId' in incoming()));
+
+      // Only organization Owner or Platform Admin can update organization settings
+      allow update: if (isOrgOwner(orgId) &&
+        incoming().id == existing().id &&
+        incoming().ownerUid == existing().ownerUid && // Ownership transfer requires special flow
+        // Normal organization owner cannot escalate billing plan or billing status directly
+        incoming().planId == existing().planId &&
+        (!('billingStatus' in incoming()) || incoming().billingStatus == existing().billingStatus) &&
+        (!('subscriptionStatus' in incoming()) || incoming().subscriptionStatus == existing().subscriptionStatus) &&
+        (!('dodoCustomerId' in incoming()) || incoming().dodoCustomerId == existing().dodoCustomerId) &&
+        (!('dodoSubscriptionId' in incoming()) || incoming().dodoSubscriptionId == existing().dodoSubscriptionId) &&
+        (!('billing' in incoming()) || incoming().billing == existing().billing)
+      ) || isPlatformAdmin();
+
+      allow delete: if isPlatformAdmin();
+
+      // -----------------------------------------------------------------------
+      // MEMBERS: /organizations/{orgId}/members/{memberUid}
+      // -----------------------------------------------------------------------
+      match /members/{memberUid} {
+        allow read: if isOrgMember(orgId);
+
+        // Org creation self-join or Admin invitation acceptance
+        allow create: if isOrgAdmin(orgId) || (
+          isOwner(memberUid) && (
+            // User creating their initial org owner membership
+            (request.resource.data.role == 'OWNER' &&
+             get(/databases/$(database)/documents/organizations/$(orgId)).data.ownerUid == request.auth.uid) ||
+            // Or accepting an invitation with matching token
+            exists(/databases/$(database)/documents/organizations/$(orgId)/invites/$(request.resource.data.inviteToken))
+          )
+        );
+
+        // Only Org Admins or Platform Admins can update roles; users cannot elevate their own role
+        allow update: if isOrgAdmin(orgId) && (
+          request.auth.uid != memberUid || isOrgOwner(orgId) || isPlatformAdmin()
+        );
+
+        // Cannot remove the primary owner
+        allow delete: if (isOrgAdmin(orgId) && existing().role != 'OWNER') || isPlatformAdmin();
+      }
+
+      // -----------------------------------------------------------------------
+      // INVITATIONS: /organizations/{orgId}/invites/{inviteId}
+      // -----------------------------------------------------------------------
+      match /invites/{inviteId} {
+        allow read: if isOrgMember(orgId);
+        allow create, update, delete: if isOrgAdmin(orgId);
+      }
+
+      // -----------------------------------------------------------------------
+      // PROJECTS: /organizations/{orgId}/projects/{projectId}
+      // -----------------------------------------------------------------------
+      match /projects/{projectId} {
+        allow read: if isOrgMember(orgId);
+
+        allow create: if isOrgMember(orgId) && isUserActive(orgId) &&
+          isValidId(projectId) &&
+          incoming().orgId == orgId &&
+          incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 200 &&
+          incoming().status in ['PLANNING', 'ACTIVE', 'AT_RISK', 'BLOCKED', 'COMPLETED', 'ARCHIVED'];
+
+        allow update: if isOrgMember(orgId) && isUserActive(orgId) &&
+          incoming().orgId == existing().orgId &&
+          incoming().id == existing().id;
+
+        allow delete: if isOrgAdmin(orgId);
+
+        match /activities/{actId} {
+          allow read: if isOrgMember(orgId);
+          allow create: if isOrgMember(orgId);
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // TASKS: /organizations/{orgId}/tasks/{taskId}
+      // -----------------------------------------------------------------------
+      match /tasks/{taskId} {
+        allow read: if isOrgMember(orgId);
+
+        allow create: if isOrgMember(orgId) && isUserActive(orgId) &&
+          isValidId(taskId) &&
+          incoming().orgId == orgId &&
+          incoming().title is string && incoming().title.size() > 0 && incoming().title.size() <= 250 &&
+          incoming().status in ['TODO', 'IN_PROGRESS', 'REVIEW', 'BLOCKED', 'DONE', 'ARCHIVED'] &&
+          incoming().priority in ['LOW', 'MEDIUM', 'HIGH', 'URGENT', 'CRITICAL'];
+
+        allow update: if isOrgMember(orgId) && isUserActive(orgId) &&
+          incoming().orgId == existing().orgId &&
+          incoming().id == existing().id;
+
+        allow delete: if isOrgManager(orgId) || (
+          isOrgMember(orgId) && existing().reporterUid == request.auth.uid
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // WORKFLOWS & RUNS: /organizations/{orgId}/workflows/{workflowId}
+      // -----------------------------------------------------------------------
+      match /workflows/{workflowId} {
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgManager(orgId) &&
+          isValidId(workflowId) &&
+          incoming().orgId == orgId &&
+          incoming().name is string && incoming().name.size() <= 150;
+        allow delete: if isOrgAdmin(orgId);
+      }
+
+      match /workflowRuns/{runId} {
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId);
+      }
+
+      // -----------------------------------------------------------------------
+      // REQUESTS & APPROVALS: /organizations/{orgId}/requests/{requestId}
+      // -----------------------------------------------------------------------
+      match /requests/{requestId} {
+        allow read: if isOrgMember(orgId);
+
+        allow create: if isOrgMember(orgId) && isUserActive(orgId) &&
+          isValidId(requestId) &&
+          incoming().orgId == orgId &&
+          incoming().title is string && incoming().title.size() <= 200 &&
+          incoming().requesterUid == request.auth.uid &&
+          incoming().status in ['DRAFT', 'SUBMITTED', 'IN_REVIEW'];
+
+        // Requester can update draft/cancel; Approver or Admin can approve/reject
+        allow update: if isOrgMember(orgId) && (
+          (existing().requesterUid == request.auth.uid && incoming().status in ['DRAFT', 'SUBMITTED', 'CANCELLED']) ||
+          (isOrgManager(orgId) && incoming().status in ['IN_REVIEW', 'APPROVED', 'REJECTED', 'COMPLETED']) ||
+          isOrgAdmin(orgId)
+        ) && incoming().orgId == existing().orgId;
+
+        allow delete: if isOrgAdmin(orgId) || (
+          isOrgMember(orgId) && existing().requesterUid == request.auth.uid && existing().status == 'DRAFT'
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // GOALS & OKRs: /organizations/{orgId}/goals/{goalId}
+      // -----------------------------------------------------------------------
+      match /goals/{goalId} {
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) && isUserActive(orgId) &&
+          incoming().orgId == orgId &&
+          incoming().title is string && incoming().title.size() <= 200;
+        allow delete: if isOrgManager(orgId);
+      }
+
+      // -----------------------------------------------------------------------
+      // INCIDENTS: /organizations/{orgId}/incidents/{incidentId}
+      // -----------------------------------------------------------------------
+      match /incidents/{incidentId} {
+        allow read: if isOrgMember(orgId);
+
+        allow create: if isOrgMember(orgId) && isUserActive(orgId) &&
+          isValidId(incidentId) &&
+          incoming().orgId == orgId &&
+          incoming().severity in ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] &&
+          incoming().status in ['OPEN', 'INVESTIGATING', 'MITIGATING', 'MONITORING', 'RESOLVED', 'CLOSED'];
+
+        allow update: if isOrgMember(orgId) &&
+          incoming().orgId == existing().orgId;
+
+        allow delete: if isOrgAdmin(orgId);
+      }
+
+      // -----------------------------------------------------------------------
+      // CRM / CUSTOMERS: /organizations/{orgId}/customers/{customerId}
+      // -----------------------------------------------------------------------
+      match /customers/{customerId} {
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) &&
+          incoming().orgId == orgId &&
+          incoming().name is string && incoming().name.size() <= 150;
+        allow delete: if isOrgManager(orgId);
+      }
+
+      // -----------------------------------------------------------------------
+      // VENDORS: /organizations/{orgId}/vendors/{vendorId}
+      // -----------------------------------------------------------------------
+      match /vendors/{vendorId} {
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) &&
+          incoming().orgId == orgId &&
+          incoming().name is string && incoming().name.size() <= 150;
+        allow delete: if isOrgAdmin(orgId);
+      }
+
+      // -----------------------------------------------------------------------
+      // ASSETS: /organizations/{orgId}/assets/{assetId}
+      // -----------------------------------------------------------------------
+      match /assets/{assetId} {
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) &&
+          incoming().orgId == orgId &&
+          incoming().name is string && incoming().name.size() <= 150;
+        allow delete: if isOrgAdmin(orgId);
+      }
+
+      // -----------------------------------------------------------------------
+      // KNOWLEDGE BASE: /organizations/{orgId}/knowledgeArticles/{articleId}
+      // -----------------------------------------------------------------------
+      match /knowledgeArticles/{articleId} {
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) &&
+          incoming().orgId == orgId &&
+          incoming().title is string && incoming().title.size() <= 200;
+        allow delete: if isOrgAdmin(orgId) || (
+          isOrgMember(orgId) && existing().authorUid == request.auth.uid
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // MEETINGS & DECISIONS: /organizations/{orgId}/meetings/{meetingId}
+      // -----------------------------------------------------------------------
+      match /meetings/{meetingId} {
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) &&
+          incoming().orgId == orgId &&
+          incoming().title is string && incoming().title.size() <= 200;
+        allow delete: if isOrgManager(orgId);
+      }
+
+      // -----------------------------------------------------------------------
+      // KPIS: /organizations/{orgId}/kpis/{kpiId}
+      // -----------------------------------------------------------------------
+      match /kpis/{kpiId} {
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgManager(orgId) &&
+          incoming().orgId == orgId &&
+          incoming().name is string && incoming().name.size() <= 150;
+        allow delete: if isOrgAdmin(orgId);
+      }
+
+      // -----------------------------------------------------------------------
+      // DASHBOARDS & REPORTS: /organizations/{orgId}/dashboards/{dashId}
+      // -----------------------------------------------------------------------
+      match /dashboards/{dashId} {
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) &&
+          incoming().orgId == orgId &&
+          incoming().title is string && incoming().title.size() <= 150;
+        allow delete: if isOrgAdmin(orgId) || (
+          isOrgMember(orgId) && existing().ownerUid == request.auth.uid
+        );
+      }
+
+      match /reports/{reportId} {
+        allow read: if isOrgMember(orgId);
+        allow create, update: if isOrgMember(orgId) &&
+          incoming().orgId == orgId;
+        allow delete: if isOrgAdmin(orgId);
+      }
+
+      // -----------------------------------------------------------------------
+      // ACTIVITY EVENTS: /organizations/{orgId}/activityEvents/{eventId}
+      // Append-only application activity log
+      // -----------------------------------------------------------------------
+      match /activityEvents/{eventId} {
+        allow read: if isOrgMember(orgId);
+        allow create: if isOrgMember(orgId) &&
+          isValidId(eventId) &&
+          incoming().orgId == orgId &&
+          incoming().actorUid == request.auth.uid;
+        allow update, delete: if false; // Append-only immutable history
+      }
+
+      // -----------------------------------------------------------------------
+      // NOTIFICATIONS: /organizations/{orgId}/notifications/{notifId}
+      // -----------------------------------------------------------------------
+      match /notifications/{notifId} {
+        allow read: if isOrgMember(orgId) && resource.data.recipientUid == request.auth.uid;
+        allow create: if isOrgMember(orgId);
+        allow update: if isOrgMember(orgId) && resource.data.recipientUid == request.auth.uid;
+        allow delete: if isOrgMember(orgId) && resource.data.recipientUid == request.auth.uid;
+      }
+
+      // -----------------------------------------------------------------------
+      // USAGE & SETTINGS: /organizations/{orgId}/usage/{usageId}
+      // -----------------------------------------------------------------------
+      match /usage/{usageId} {
+        allow read: if isOrgMember(orgId);
+        allow write: if isOrgAdmin(orgId) || isPlatformAdmin();
+      }
+
+      // -----------------------------------------------------------------------
+      // BILLING & SUBSCRIPTION DATA: /organizations/{orgId}/billing/{document=**}
+      // Read-only for org members. Writes restricted strictly to Admin SDK or Platform Admins.
+      // -----------------------------------------------------------------------
+      match /billing/{document=**} {
+        allow read: if isOrgMember(orgId);
+        allow write: if isPlatformAdmin();
+      }
+
+      match /settings/{settingId} {
+        allow read: if isOrgMember(orgId);
+        allow write: if isOrgAdmin(orgId) || isPlatformAdmin();
+      }
+    }
+
+    // =========================================================================
+    // PLATFORM CONTROL & SUPER ADMIN
+    // Restricted strictly to platform administrators
+    // =========================================================================
+    match /platform/{document=**} {
+      allow read, write: if isPlatformAdmin();
+    }
+  }
+}

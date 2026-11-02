@@ -289,6 +289,9 @@
   <!-- TOAST NOTIFICATION CONTAINER -->
   <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-md w-full pointer-events-none"></div>
 
+  <!-- AI COPILOT SLIDE-OVER DRAWER CONTAINER -->
+  <div id="ai-copilot-container" class="relative z-50"></div>
+
   <!-- CORE SCRIPTS AND APPLICATION CODE -->
   <script type="module">
     // =========================================================================
@@ -329,6 +332,12 @@
       auth: null,
       cache: {},
       charts: {},
+
+      // AI Copilot State (Strict Business & Financial Intelligence)
+      aiCopilotOpen: false,
+      aiCopilotLoading: false,
+      aiCopilotHistory: [],
+      aiCopilotProposals: {},
 
       // Owner Command Center State
       isPlatformOwner: false,
@@ -484,6 +493,916 @@
         modalContainer.innerHTML = '';
       },
 
+      // -----------------------------------------------------------------------
+      // AI COPILOT SUBSYSTEM: STRICT BUSINESS & FINANCIAL GOVERNANCE
+      // Strict Multi-User Isolation & Explicit User Data Permission Gate
+      // -----------------------------------------------------------------------
+
+      // Simulated User Profiles for Multi-User Isolation Demonstration
+      simulatedUserProfiles: {
+        'usr_sarah_ceo': {
+          uid: 'usr_sarah_ceo',
+          displayName: 'Sarah Jenkins',
+          title: 'Chief Executive Officer & Founder',
+          email: 'sarah.j@acme.example',
+          role: 'OWNER',
+          avatarBg: 'bg-indigo-600',
+          orgName: 'Acme Global Holdings (Corp)',
+          privateBudgets: '$340,000 Fiscal CapEx',
+          privateFocus: 'Board Strategy, Enterprise Runway ($495k ARR), and Datadog APM Renewal (#req-501)'
+        },
+        'usr_alex_vpeng': {
+          uid: 'usr_alex_vpeng',
+          displayName: 'Alex Morgan',
+          title: 'VP of Engineering',
+          email: 'alex.m@acme.example',
+          role: 'MANAGER',
+          avatarBg: 'bg-sky-600',
+          orgName: 'Engineering Core Platform',
+          privateBudgets: '$120,000 Cloud Compute',
+          privateFocus: 'Kubernetes Cluster Migration, AWS Reserved Instances (#req-502), and SLA Velocity'
+        },
+        'usr_david_secops': {
+          uid: 'usr_david_secops',
+          displayName: 'David Chen',
+          title: 'SecOps & Compliance Lead',
+          email: 'david.c@acme.example',
+          role: 'PROJECT_MANAGER',
+          avatarBg: 'bg-amber-600',
+          orgName: 'Security & Risk Governance',
+          privateBudgets: '$65,000 Audit & Defense',
+          privateFocus: 'ISO 27001 Certification, Falcon EDR Expansion (#req-503), and Incident #inc-901'
+        }
+      },
+
+      getActiveUserUid() {
+        if (this.currentUser && this.currentUser.uid) {
+          return this.currentUser.uid;
+        }
+        return 'usr_sarah_ceo';
+      },
+
+      getActiveUserName() {
+        if (this.currentUser && this.currentUser.displayName) {
+          return this.currentUser.displayName;
+        }
+        return this.simulatedUserProfiles['usr_sarah_ceo'].displayName;
+      },
+
+      getActiveUserRole() {
+        return this.currentRole || 'OWNER';
+      },
+
+      // Check whether this specific user has granted data permission
+      isAiDataPermissionGranted() {
+        const uid = this.getActiveUserUid();
+        return localStorage.getItem(`nexora_ai_data_consent_${uid}`) === 'true';
+      },
+
+      setAiDataPermission(granted) {
+        const uid = this.getActiveUserUid();
+        localStorage.setItem(`nexora_ai_data_consent_${uid}`, granted ? 'true' : 'false');
+        if (granted) {
+          this.showToast('Full AI data access permission granted with multi-user isolation.', 'success', 4000);
+        } else {
+          this.showToast('AI data access revoked. Copilot reverted to Advisory Mode.', 'info', 4000);
+        }
+        this.renderAiCopilotDrawer();
+      },
+
+      // Switch simulated user to demonstrate zero cross-user data leakage
+      switchSimulatedUser(userKey) {
+        const profile = this.simulatedUserProfiles[userKey];
+        if (!profile) return;
+
+        this.currentUser = {
+          uid: profile.uid,
+          displayName: profile.displayName,
+          email: profile.email,
+          photoURL: '',
+          accountStatus: 'ACTIVE'
+        };
+        this.currentRole = profile.role;
+        this.showToast(`Switched active session to: ${profile.displayName} (${profile.role}). User data strictly partitioned.`, 'info', 5000);
+        
+        // Load this user's isolated chat history
+        this.loadUserCopilotHistory();
+        this.renderAiCopilotDrawer();
+        this.renderWorkspace();
+      },
+
+      // Multi-User Isolated History Management
+      getUserCopilotHistoryKey() {
+        const uid = this.getActiveUserUid();
+        return `nexora_copilot_hist_${uid}`;
+      },
+
+      loadUserCopilotHistory() {
+        try {
+          const key = this.getUserCopilotHistoryKey();
+          const saved = localStorage.getItem(key);
+          if (saved) {
+            this.aiCopilotHistory = JSON.parse(saved);
+          } else {
+            this.initAiCopilotGreeting();
+          }
+        } catch {
+          this.initAiCopilotGreeting();
+        }
+      },
+
+      persistUserCopilotHistory() {
+        try {
+          const key = this.getUserCopilotHistoryKey();
+          localStorage.setItem(key, JSON.stringify(this.aiCopilotHistory.slice(-20)));
+        } catch {
+          // LocalStorage quota protection
+        }
+      },
+
+      // Warning & Caution Data Consent Modal
+      openAiDataConsentModal() {
+        const isCurrentlyGranted = this.isAiDataPermissionGranted();
+        const userName = this.getActiveUserName();
+        const userUid = this.getActiveUserUid();
+
+        this.openModal(`
+          <div class="space-y-4 text-xs text-slate-700 dark:text-slate-300">
+            <!-- Warning Header -->
+            <div class="p-4 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/40 text-amber-950 dark:text-amber-200 space-y-2">
+              <div class="flex items-center gap-2">
+                <div class="p-2 rounded-lg bg-amber-200 dark:bg-amber-900 text-amber-800 dark:text-amber-200 shrink-0">
+                  <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <h4 class="text-sm font-bold uppercase tracking-wider text-amber-900 dark:text-amber-200">Security & Privacy Caution Disclosure</h4>
+                  <p class="text-[11px] text-amber-800 dark:text-amber-300">Explicit User Authorization Required for Operational Ledger Access</p>
+                </div>
+              </div>
+              <p class="leading-relaxed text-[11px] pt-1">
+                Granting permission allows the NEXORA AI Copilot to inspect <strong>ALL private organizational records</strong> associated with your account, including financial allocations, purchase requisitions, incident logs, client contracts, and employee task backlogs.
+              </p>
+            </div>
+
+            <!-- Detailed Disclosures & Guarantees -->
+            <div class="space-y-3 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+              <h5 class="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[10px]">What Granting Access Enables:</h5>
+              <ul class="space-y-2 text-slate-600 dark:text-slate-400">
+                <li class="flex items-start gap-2">
+                  <i data-lucide="check-circle" class="w-4 h-4 text-emerald-500 shrink-0 mt-0.5"></i>
+                  <span><strong>Comprehensive Ledger Access:</strong> The AI can analyze projects, budgets ($340k), cash runway (14.8 mo), pending requisitions, and vendor renewals to give bespoke executive intelligence.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <i data-lucide="shield-check" class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5"></i>
+                  <span><strong>Strict Multi-User Isolation Guarantee:</strong> Your data is strictly segregated by User UID (<code class="font-mono text-[10px] bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-indigo-600">${userUid}</code>). The AI will <strong>NEVER</strong> mix, combine, or cross-reference your data with other users or organizations.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <i data-lucide="lock" class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5"></i>
+                  <span><strong>Zero Silent Mutations:</strong> The AI cannot directly write or modify records. Any proposed data update requires your manual inspection and explicit click on <strong>[Approve & Apply]</strong>.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <i data-lucide="refresh-cw" class="w-4 h-4 text-slate-400 shrink-0 mt-0.5"></i>
+                  <span><strong>Revocable At Any Time:</strong> You can toggle off data access with a single click in the Copilot header to instantly revert to Advisory Mode.</span>
+                </li>
+              </ul>
+            </div>
+
+            <!-- Current Scope Box -->
+            <div class="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 flex items-center justify-between text-[11px]">
+              <div>
+                <span class="text-slate-400">Active User:</span>
+                <strong class="text-slate-900 dark:text-white ml-1">${userName}</strong>
+              </div>
+              <div>
+                <span class="text-slate-400">Current Status:</span>
+                <span class="font-bold font-mono ml-1 ${isCurrentlyGranted ? 'text-emerald-600' : 'text-amber-600'}">
+                  ${isCurrentlyGranted ? 'GRANTED' : 'RESTRICTED (ADVISORY)'}
+                </span>
+              </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <button onclick="NexoraApp.setAiDataPermission(false); NexoraApp.closeModal();" class="w-full sm:w-auto px-4 py-2 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-700 dark:text-slate-300 font-semibold text-xs transition">
+                Keep Advisory Mode (Zero Data Access)
+              </button>
+              <button onclick="NexoraApp.setAiDataPermission(true); NexoraApp.closeModal();" class="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-lg text-xs shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition active:scale-95">
+                <i data-lucide="shield-check" class="w-4 h-4"></i>
+                <span>Authorize & Grant Full Data Access</span>
+              </button>
+            </div>
+          </div>
+        `, 'Data Privacy & Access Authorization Gate', 'max-w-xl');
+      },
+
+      // Step-by-Step Click-by-Click Firebase Setup Guide
+      openFirebaseGuideModal() {
+        const previewHost = window.location.hostname;
+        const dbId = this.config.firestoreDatabaseId || 'ai-studio-3b092059-520b-4f77-ac8f-80dfcc7fc88d';
+        const projectId = this.config.projectId || 'nexora-enterprise';
+
+        this.openModal(`
+          <div class="space-y-5 text-xs text-slate-700 dark:text-slate-300 max-h-[75vh] overflow-y-auto pr-1">
+            <!-- Header Banner -->
+            <div class="p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-950 dark:text-indigo-200 space-y-1">
+              <div class="flex items-center gap-2">
+                <div class="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                  <i data-lucide="flame" class="w-4 h-4 text-amber-300"></i>
+                </div>
+                <div>
+                  <h4 class="text-sm font-bold">Cloud Firebase & Firestore Provisioning Manual</h4>
+                  <p class="text-[11px] text-indigo-800 dark:text-indigo-300">Step-by-step, click-by-click instructions for live enterprise deployment</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Configuration Summary Chips -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 font-mono text-[11px]">
+              <div class="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850">
+                <span class="text-slate-400 text-[10px] block">Project ID:</span>
+                <strong class="text-slate-900 dark:text-white truncate block">${projectId}</strong>
+              </div>
+              <div class="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850">
+                <span class="text-slate-400 text-[10px] block">Target Database ID:</span>
+                <strong class="text-indigo-600 dark:text-indigo-400 truncate block">${dbId}</strong>
+              </div>
+              <div class="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 col-span-2 sm:col-span-1">
+                <span class="text-slate-400 text-[10px] block">Active Domain:</span>
+                <strong class="text-slate-900 dark:text-white truncate block">${previewHost}</strong>
+              </div>
+            </div>
+
+            <!-- Detailed Steps -->
+            <div class="space-y-4">
+              <!-- Step 1 -->
+              <div class="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2">
+                <div class="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold">
+                  <span class="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center text-xs">1</span>
+                  <span>Open Firebase Console & Locate Project</span>
+                </div>
+                <ol class="list-decimal list-inside space-y-1.5 pl-6 text-slate-600 dark:text-slate-400 leading-relaxed">
+                  <li>Navigate to <a href="https://console.firebase.google.com" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 font-semibold underline">console.firebase.google.com</a> in your web browser.</li>
+                  <li>Click on your designated project: <code class="font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-[10px]">${projectId}</code>.</li>
+                  <li>If creating a fresh project, click <strong>Add Project</strong>, enter <code>nexora-enterprise</code>, and click Continue.</li>
+                </ol>
+              </div>
+
+              <!-- Step 2 -->
+              <div class="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2">
+                <div class="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold">
+                  <span class="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center text-xs">2</span>
+                  <span>Create Cloud Firestore Database</span>
+                </div>
+                <ol class="list-decimal list-inside space-y-1.5 pl-6 text-slate-600 dark:text-slate-400 leading-relaxed">
+                  <li>In the left-hand navigation menu, click <strong>Build</strong> &rarr; <strong>Firestore Database</strong>.</li>
+                  <li>Click the <strong>Create Database</strong> button.</li>
+                  <li>In the setup dialog, select <strong>Start in production mode</strong> and click Next.</li>
+                  <li>Select your Cloud Firestore location region (e.g., <code>asia-southeast1</code> or <code>us-central1</code>).</li>
+                  <li>Click <strong>Enable</strong>. If provisioning a custom named database ID, configure ID: <code class="font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-[10px]">${dbId}</code>.</li>
+                </ol>
+              </div>
+
+              <!-- Step 3 -->
+              <div class="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2">
+                <div class="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold">
+                  <span class="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center text-xs">3</span>
+                  <span>Enable Authentication Providers</span>
+                </div>
+                <ol class="list-decimal list-inside space-y-1.5 pl-6 text-slate-600 dark:text-slate-400 leading-relaxed">
+                  <li>In the left navigation, click <strong>Build</strong> &rarr; <strong>Authentication</strong>.</li>
+                  <li>Click <strong>Get Started</strong> (if not already enabled).</li>
+                  <li>Click on the <strong>Sign-in method</strong> tab.</li>
+                  <li>Click on <strong>Google</strong> &rarr; Toggle <strong>Enable</strong> &rarr; Select project support email &rarr; Click <strong>Save</strong>.</li>
+                  <li>Click on <strong>Anonymous</strong> &rarr; Toggle <strong>Enable</strong> &rarr; Click <strong>Save</strong> (enables instant guest access).</li>
+                </ol>
+              </div>
+
+              <!-- Step 4 -->
+              <div class="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2">
+                <div class="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold">
+                  <span class="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center text-xs">4</span>
+                  <span>Whitelist Authorized Preview Domain</span>
+                </div>
+                <ol class="list-decimal list-inside space-y-1.5 pl-6 text-slate-600 dark:text-slate-400 leading-relaxed">
+                  <li>Still inside Authentication, click the <strong>Settings</strong> tab &rarr; scroll to <strong>Authorized domains</strong>.</li>
+                  <li>Click <strong>Add domain</strong>.</li>
+                  <li>Paste the preview host below and click <strong>Save</strong>:</li>
+                </ol>
+                <div class="flex items-center gap-2 pl-6 pt-1">
+                  <input id="guide-domain-copy" readonly value="${previewHost}" class="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-850 font-mono text-[11px] select-all" />
+                  <button onclick="navigator.clipboard.writeText('${previewHost}'); NexoraApp.showToast('Domain copied!', 'success');" class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold whitespace-nowrap">
+                    Copy Domain
+                  </button>
+                </div>
+              </div>
+
+              <!-- Step 5 -->
+              <div class="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold">
+                    <span class="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center text-xs">5</span>
+                    <span>Deploy Zero-Trust Firestore Security Rules</span>
+                  </div>
+                  <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 rounded">V3 AI-Hardened</span>
+                </div>
+                <ol class="list-decimal list-inside space-y-1.5 pl-6 text-slate-600 dark:text-slate-400 leading-relaxed">
+                  <li>Return to <strong>Firestore Database</strong> &rarr; click the <strong>Rules</strong> tab at the top.</li>
+                  <li>Download or copy the production rules below and paste them into the Firestore editor:</li>
+                </ol>
+                <div class="pl-6 flex flex-wrap items-center gap-2 pt-1">
+                  <a href="/api/download/firestore-rules" download="firestore.rules.txt" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                    <span>Download firestore.rules.txt</span>
+                  </a>
+                  <a href="/firestore.rules.txt" target="_blank" class="px-3 py-2 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition">
+                    <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                    <span>View in Browser</span>
+                  </a>
+                  <button onclick="fetch('/firestore.rules.txt').then(r => r.text()).then(t => { navigator.clipboard.writeText(t); NexoraApp.showToast('All 480+ lines of Firestore Rules copied to clipboard!', 'success'); })" class="px-3 py-2 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
+                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                    <span>Copy All Rules</span>
+                  </button>
+                </div>
+                <div class="pl-6 text-[11px] text-slate-500 dark:text-slate-400">
+                  3. In the Firebase Console, click the blue <strong>Publish</strong> button to activate real-time zero-trust protection.
+                </div>
+              </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <a href="/api/download/firestore-rules" download="firestore.rules.txt" class="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1">
+                <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+                <span>Download firestore.rules.txt file directly</span>
+              </a>
+              <button onclick="NexoraApp.closeModal()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-xs">
+                Got It, Close Guide
+              </button>
+            </div>
+          </div>
+        `, 'Firebase Cloud Deployment & Security Guide', 'max-w-xl');
+      },
+
+      toggleAiCopilot() {
+        this.aiCopilotOpen = !this.aiCopilotOpen;
+        if (this.aiCopilotOpen && (!this.aiCopilotHistory || this.aiCopilotHistory.length === 0)) {
+          this.loadUserCopilotHistory();
+        }
+        this.renderAiCopilotDrawer();
+      },
+
+      openAiCopilot() {
+        this.aiCopilotOpen = true;
+        if (!this.aiCopilotHistory || this.aiCopilotHistory.length === 0) {
+          this.loadUserCopilotHistory();
+        }
+        this.renderAiCopilotDrawer();
+      },
+
+      closeAiCopilot() {
+        this.aiCopilotOpen = false;
+        this.renderAiCopilotDrawer();
+      },
+
+      clearAiCopilotHistory() {
+        this.aiCopilotHistory = [];
+        this.aiCopilotProposals = {};
+        const key = this.getUserCopilotHistoryKey();
+        localStorage.removeItem(key);
+        this.initAiCopilotGreeting();
+        this.renderAiCopilotDrawer();
+        this.showToast('Copilot conversation history cleared for active user.', 'info');
+      },
+
+      initAiCopilotGreeting() {
+        const isGranted = this.isAiDataPermissionGranted();
+        const userName = this.getActiveUserName();
+        const userUid = this.getActiveUserUid();
+        const role = this.getActiveUserRole();
+
+        this.aiCopilotHistory = [
+          {
+            id: 'msg-welcome',
+            role: 'model',
+            timestamp: new Date().toISOString(),
+            text: `### 🌐 NEXORA Enterprise Business & Financial Intelligence Officer
+
+Hello **${userName}** (${role}). I operate as your dedicated executive strategy, operations, and financial officer partner.
+
+---
+
+#### 🔒 Privacy & Multi-User Isolation Status:
+- **Active User UID**: \`${userUid}\`
+- **Data Permission Status**: **${isGranted ? '🟢 FULL DATA ACCESS GRANTED' : '🔒 RESTRICTED (ADVISORY MODE)'}**
+- **Isolation Guarantee**: All prompts, history, and context are strictly partitioned to your account. Data from other users is **never combined, leaked, or referenced**.
+
+${isGranted ? `
+✨ **Operational Ledger Active**: I have full authorized visibility into your active projects, budgets ($340k allocated), cash runway (14.8 months), pending requisitions (#req-501), and War Room incidents (#inc-901).
+` : `
+⚠️ **Advisory Mode**: You have not yet granted permission to inspect private operational ledgers. I can provide generalized financial models and corporate governance guidance. Click **Grant Data Access** in the banner above to allow customized ledger inspection.
+`}
+
+#### 🛡️ Operational Safeguards in Effect:
+1. **Strict Business Domain Boundaries**: Any inquiry outside corporate business, finance, or operations will be politely declined.
+2. **Zero Silent Mutations**: I cannot modify database records directly. Any requested change will generate a **Structured Proposal Card** with **[Approve & Apply]** and **[Decline]** buttons for your manual sign-off.`,
+            isGreeting: true
+          }
+        ];
+        this.persistUserCopilotHistory();
+      },
+
+      async sendAiCopilotMessage(promptText) {
+        const input = document.getElementById('ai-copilot-input');
+        const text = (promptText || input?.value || '').trim();
+        if (!text) return;
+        if (input) input.value = '';
+
+        const userMsgId = `msg-user-${Date.now()}`;
+        this.aiCopilotHistory.push({
+          id: userMsgId,
+          role: 'user',
+          text: text,
+          timestamp: new Date().toISOString()
+        });
+
+        this.aiCopilotLoading = true;
+        this.renderAiCopilotDrawer();
+        this.scrollCopilotToBottom();
+
+        try {
+          const store = this.getDataStore();
+          const permissionGranted = this.isAiDataPermissionGranted();
+          const userId = this.getActiveUserUid();
+          const userName = this.getActiveUserName();
+          const userRole = this.getActiveUserRole();
+
+          // Prepare data snapshot ONLY if user explicitly granted permission
+          let orgSnapshot = null;
+          if (permissionGranted) {
+            orgSnapshot = {
+              org: this.currentOrg,
+              projects: store.projects || [],
+              requests: store.requests || [],
+              incidents: store.incidents || [],
+              vendors: store.vendors || [],
+              goals: store.goals || [],
+              customers: store.customers || []
+            };
+          }
+
+          const token = this.currentUser ? await this.currentUser.getIdToken().catch(() => '') : '';
+          const res = await fetch('/api/ai/copilot', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({
+              message: text,
+              history: this.aiCopilotHistory.filter(m => !m.isGreeting).slice(-8),
+              orgSnapshot,
+              userId,
+              userName,
+              userRole,
+              permissionGranted
+            })
+          });
+
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.error || `Server responded with ${res.status}`);
+          }
+
+          const proposedActions = data.proposedActions || [];
+          proposedActions.forEach(p => {
+            this.aiCopilotProposals[p.id] = p;
+          });
+
+          this.aiCopilotHistory.push({
+            id: `msg-model-${Date.now()}`,
+            role: 'model',
+            text: data.text || 'I have synthesized your operational and financial inquiry.',
+            proposedActions: proposedActions,
+            timestamp: new Date().toISOString()
+          });
+
+          this.persistUserCopilotHistory();
+        } catch (err) {
+          console.error('[AI Copilot Fetch Error]', err);
+          this.aiCopilotHistory.push({
+            id: `msg-err-${Date.now()}`,
+            role: 'model',
+            isError: true,
+            text: `⚠️ **Operational Notice:** ${err.message || 'Unable to connect to Nexora AI Copilot service. Please verify server status.'}`,
+            timestamp: new Date().toISOString()
+          });
+        } finally {
+          this.aiCopilotLoading = false;
+          this.renderAiCopilotDrawer();
+          this.scrollCopilotToBottom();
+        }
+      },
+
+      scrollCopilotToBottom() {
+        requestAnimationFrame(() => {
+          const scrollContainer = document.getElementById('ai-copilot-messages');
+          if (scrollContainer) {
+            scrollContainer.scrollTop = scrollContainer.scrollHeight;
+          }
+        });
+      },
+
+      async approveAndApplyProposal(proposalId) {
+        const proposal = this.aiCopilotProposals[proposalId];
+        if (!proposal || proposal.status === 'APPROVED') return;
+
+        const { collection, documentId, changes, title } = proposal;
+        this.showToast(`Applying authorized changes to ${collection}/${documentId}...`, 'info', 2500);
+
+        try {
+          const store = this.getDataStore();
+
+          if (collection === 'requests') {
+            if (changes.status) {
+              await this.decideRequest(documentId, changes.status);
+            } else {
+              const req = (store.requests || []).find(r => r.id === documentId);
+              if (req) Object.assign(req, changes);
+              if (!this.isDemoMode && this.currentOrg) {
+                await this.updateInFirestore('requests', documentId, changes);
+              }
+            }
+          } else if (collection === 'incidents') {
+            if (changes.status === 'RESOLVED') {
+              await this.resolveIncident(documentId);
+            } else {
+              const inc = (store.incidents || []).find(i => i.id === documentId);
+              if (inc) Object.assign(inc, changes);
+              if (!this.isDemoMode && this.currentOrg) {
+                await this.updateInFirestore('incidents', documentId, changes);
+              }
+            }
+          } else {
+            const list = store[collection] || [];
+            const doc = list.find(x => x.id === documentId);
+            if (doc) Object.assign(doc, changes);
+            if (!this.isDemoMode && this.currentOrg) {
+              await this.updateInFirestore(collection, documentId, changes);
+            }
+          }
+
+          proposal.status = 'APPROVED';
+          proposal.appliedAt = new Date().toISOString();
+
+          this.recordActivity(
+            (collection || 'SYSTEM').toUpperCase(),
+            documentId,
+            `Applied AI Copilot proposal: ${title}`
+          );
+
+          this.showToast(`Authorized change successfully applied to ${collection}!`, 'success');
+          this.destroyCharts();
+          this.renderWorkspace();
+          this.renderAiCopilotDrawer();
+        } catch (err) {
+          console.error('[Copilot Apply Error]', err);
+          this.showToast(`Failed to apply changes: ${err.message}`, 'error');
+        }
+      },
+
+      declineProposal(proposalId) {
+        const proposal = this.aiCopilotProposals[proposalId];
+        if (!proposal) return;
+        proposal.status = 'DECLINED';
+        proposal.declinedAt = new Date().toISOString();
+        this.showToast('Proposal declined. No changes written to database.', 'info');
+        this.renderAiCopilotDrawer();
+      },
+
+      renderAiCopilotDrawer() {
+        const container = document.getElementById('ai-copilot-container');
+        if (!container) return;
+
+        if (!this.aiCopilotOpen) {
+          container.innerHTML = '';
+          return;
+        }
+
+        const isGranted = this.isAiDataPermissionGranted();
+        const activeUserName = this.getActiveUserName();
+        const activeUserUid = this.getActiveUserUid();
+        const activeUserRole = this.getActiveUserRole();
+
+        container.innerHTML = `
+          <!-- Backdrop -->
+          <div class="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-50 transition-opacity" onclick="NexoraApp.closeAiCopilot()"></div>
+
+          <!-- Slide-over Drawer Panel -->
+          <aside class="fixed inset-y-0 right-0 z-50 w-full sm:w-[540px] bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out safe-pb">
+            <!-- Header -->
+            <div class="px-4 sm:px-6 py-3 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50/90 dark:bg-slate-850/90 backdrop-blur-md space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5 overflow-hidden">
+                  <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-600 flex items-center justify-center text-white shrink-0 shadow-sm">
+                    <i data-lucide="sparkles" class="w-4 h-4 text-amber-300"></i>
+                  </div>
+                  <div class="truncate">
+                    <div class="flex items-center gap-1.5">
+                      <h3 class="font-bold text-sm text-slate-900 dark:text-white truncate">NEXORA Executive Copilot</h3>
+                      <span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                        CFO & CSO PARTNER
+                      </span>
+                    </div>
+                    <div class="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 truncate">
+                      <span class="w-1.5 h-1.5 rounded-full ${isGranted ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}"></span>
+                      <span>Strict User Isolation &middot; Zero Silent Mutations</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-1 shrink-0">
+                  <button onclick="NexoraApp.openFirebaseGuideModal()" title="Firebase Step-by-Step Setup Guide" class="p-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-lg transition" title="Firebase Setup Guide">
+                    <i data-lucide="flame" class="w-4 h-4"></i>
+                  </button>
+                  <button onclick="NexoraApp.clearAiCopilotHistory()" title="Clear Chat History" class="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                  </button>
+                  <button onclick="NexoraApp.closeAiCopilot()" title="Close Drawer (ESC)" class="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Permission Status & User Context Bar -->
+              <div class="flex items-center justify-between gap-2 pt-1 border-t border-slate-200/60 dark:border-slate-800/60 text-[11px]">
+                <!-- User Scope Pill -->
+                <div class="flex items-center gap-1.5 overflow-hidden">
+                  <span class="text-slate-400">Context:</span>
+                  <div class="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold truncate">
+                    <span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                    <span class="truncate">${activeUserName} (${activeUserRole})</span>
+                  </div>
+                </div>
+
+                <!-- Permission Toggle / Caution Button -->
+                <button onclick="NexoraApp.openAiDataConsentModal()" class="px-2.5 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 transition ${
+                  isGranted
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-200'
+                    : 'bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-200 border border-amber-300 dark:border-amber-800 hover:bg-amber-200'
+                }">
+                  <i data-lucide="${isGranted ? 'shield-check' : 'shield-alert'}" class="w-3 h-3"></i>
+                  <span>${isGranted ? 'Data Access: GRANTED' : 'Data Access: RESTRICTED'}</span>
+                </button>
+              </div>
+
+              <!-- Multi-User Isolation Quick Switcher -->
+              <div class="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
+                <span>Test Zero Data Leakage:</span>
+                <div class="flex items-center gap-1">
+                  <button onclick="NexoraApp.switchSimulatedUser('usr_sarah_ceo')" class="px-1.5 py-0.5 rounded border ${activeUserUid === 'usr_sarah_ceo' ? 'border-indigo-500 text-indigo-600 font-bold bg-indigo-50 dark:bg-indigo-950' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-100'}">User A (CEO)</button>
+                  <button onclick="NexoraApp.switchSimulatedUser('usr_alex_vpeng')" class="px-1.5 py-0.5 rounded border ${activeUserUid === 'usr_alex_vpeng' ? 'border-sky-500 text-sky-600 font-bold bg-sky-50 dark:bg-sky-950' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-100'}">User B (VP Eng)</button>
+                  <button onclick="NexoraApp.switchSimulatedUser('usr_david_secops')" class="px-1.5 py-0.5 rounded border ${activeUserUid === 'usr_david_secops' ? 'border-amber-500 text-amber-600 font-bold bg-amber-50 dark:bg-amber-950' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-100'}">User C (SecOps)</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Caution Banner If Permission Not Granted -->
+            ${!isGranted ? `
+              <div class="px-4 py-2 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/60 text-[11px] text-amber-900 dark:text-amber-200 flex items-center justify-between gap-3">
+                <div class="flex items-center gap-1.5">
+                  <i data-lucide="lock" class="w-3.5 h-3.5 text-amber-600 shrink-0"></i>
+                  <span><strong>Advisory Mode Active:</strong> Private ledgers excluded until you grant permission.</span>
+                </div>
+                <button onclick="NexoraApp.openAiDataConsentModal()" class="text-indigo-600 dark:text-indigo-400 font-bold underline whitespace-nowrap">
+                  Grant Access &rarr;
+                </button>
+              </div>
+            ` : ''}
+
+            <!-- Messages Thread -->
+            <div id="ai-copilot-messages" class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 touch-scroll text-xs">
+              ${(this.aiCopilotHistory || []).map(msg => this.renderCopilotMessage(msg)).join('')}
+
+              ${this.aiCopilotLoading ? `
+                <div class="flex items-start gap-2.5 animate-pulse">
+                  <div class="w-7 h-7 rounded-lg bg-indigo-600/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                  </div>
+                  <div class="p-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 space-y-2 max-w-[85%]">
+                    <div class="flex items-center gap-2 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+                      <div class="w-2 h-2 rounded-full bg-indigo-600 animate-ping"></div>
+                      <span>Synthesizing multi-section executive partner briefing...</span>
+                    </div>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+
+            <!-- Preset Quick Starters -->
+            <div class="px-4 py-2 border-t border-slate-100 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/50 flex items-center gap-1.5 overflow-x-auto touch-scroll">
+              <span class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider shrink-0">Quick Starters:</span>
+              <button onclick="NexoraApp.sendAiCopilotMessage('Provide an executive partner briefing on our Q4 financial health, runway posture, and burn rate.')" class="shrink-0 px-2.5 py-1 rounded-md text-[11px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-500 hover:text-indigo-600 transition">
+                Financial Health & Runway
+              </button>
+              <button onclick="NexoraApp.sendAiCopilotMessage('Audit pending purchase request req-501 for Datadog APM renewal and evaluate fiscal impact.')" class="shrink-0 px-2.5 py-1 rounded-md text-[11px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-500 hover:text-indigo-600 transition">
+                Audit Request #req-501
+              </button>
+              <button onclick="NexoraApp.sendAiCopilotMessage('Conduct incident triage for War Room issue #inc-901 and check mitigation status.')" class="shrink-0 px-2.5 py-1 rounded-md text-[11px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-500 hover:text-indigo-600 transition">
+                War Room Triage #inc-901
+              </button>
+              <button onclick="NexoraApp.sendAiCopilotMessage('Write me a poem about summer vacation')" class="shrink-0 px-2.5 py-1 rounded-md text-[11px] bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 hover:bg-amber-100 transition" title="Test non-business strict refusal guardrail">
+                Test Non-Business
+              </button>
+            </div>
+
+            <!-- Input Box -->
+            <div class="p-3 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 space-y-2">
+              <form onsubmit="event.preventDefault(); NexoraApp.sendAiCopilotMessage();" class="flex items-center gap-2">
+                <input
+                  id="ai-copilot-input"
+                  type="text"
+                  placeholder="${isGranted ? 'Ask deep financial analysis, runway audit, or propose record changes...' : 'Ask general business advice (Grant Data Access above for actual records)...'}"
+                  autocomplete="off"
+                  class="flex-1 px-3.5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-850 text-slate-900 dark:text-white text-xs placeholder:text-slate-400 focus:outline-hidden focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-900 transition"
+                  ${this.aiCopilotLoading ? 'disabled' : ''}
+                />
+                <button
+                  type="submit"
+                  class="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold rounded-lg text-xs shadow-xs flex items-center justify-center transition shrink-0"
+                  ${this.aiCopilotLoading ? 'disabled' : ''}
+                >
+                  <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                </button>
+              </form>
+              <div class="flex items-center justify-between text-[10px] text-slate-400 px-0.5">
+                <span>Domain strictly business & financial</span>
+                <span class="flex items-center gap-1 font-mono">
+                  <i data-lucide="shield-check" class="w-3 h-3 text-emerald-500"></i>
+                  <span>No silent mutations &middot; Human sign-off required</span>
+                </span>
+              </div>
+            </div>
+          </aside>
+        `;
+
+        if (window.lucide) window.lucide.createIcons({ root: container });
+        setTimeout(() => document.getElementById('ai-copilot-input')?.focus(), 100);
+      },
+
+      renderCopilotMessage(msg) {
+        if (msg.role === 'user') {
+          return `
+            <div class="flex justify-end">
+              <div class="max-w-[85%] p-3.5 rounded-xl bg-indigo-600 text-white space-y-1 shadow-xs">
+                <div class="font-medium whitespace-pre-wrap">${this.escapeHtml(msg.text)}</div>
+                <div class="text-[9px] text-indigo-200 text-right font-mono">${new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+              </div>
+            </div>
+          `;
+        }
+
+        const isRefusal = (msg.text || '').includes("I am NEXORA's Enterprise Business & Financial Intelligence Officer") || (msg.text || '').includes("strictly and exclusively confined") || (msg.text || '').includes("Domain Boundary");
+        const formattedHtml = this.formatCopilotText(msg.text);
+        const proposals = msg.proposedActions || [];
+
+        return `
+          <div class="flex items-start gap-2.5">
+            <div class="w-7 h-7 rounded-lg ${msg.isError ? 'bg-rose-100 text-rose-600' : isRefusal ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' : 'bg-gradient-to-tr from-indigo-600 to-violet-600 text-white'} flex items-center justify-center shrink-0 shadow-2xs mt-1">
+              <i data-lucide="${msg.isError ? 'alert-triangle' : isRefusal ? 'shield-alert' : 'sparkles'}" class="w-3.5 h-3.5"></i>
+            </div>
+            <div class="space-y-3 max-w-[90%] flex-1">
+              <div class="p-4 rounded-xl border ${
+                msg.isError ? 'border-rose-300 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/30 text-rose-900 dark:text-rose-200' :
+                isRefusal ? 'border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/40 text-amber-950 dark:text-amber-200' :
+                'border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-850/80 text-slate-800 dark:text-slate-200'
+              } shadow-xs space-y-2">
+                ${isRefusal ? `
+                  <div class="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 mb-1 pb-1 border-b border-amber-200 dark:border-amber-800">
+                    <i data-lucide="shield" class="w-3.5 h-3.5"></i>
+                    <span>Strict Business Safeguard Policy Active</span>
+                  </div>
+                ` : ''}
+                <div class="leading-relaxed text-xs copilot-rich-text">${formattedHtml}</div>
+                <div class="text-[9px] text-slate-400 text-right font-mono mt-2 pt-1 border-t border-slate-100 dark:border-slate-800/60">${new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+              </div>
+
+              ${proposals.map(p => this.renderProposalCard(p)).join('')}
+            </div>
+          </div>
+        `;
+      },
+
+      renderProposalCard(proposal) {
+        const p = this.aiCopilotProposals[proposal.id] || proposal;
+        const isApproved = p.status === 'APPROVED';
+        const isDeclined = p.status === 'DECLINED';
+        const isPending = !isApproved && !isDeclined;
+
+        const changes = p.changes || {};
+        const changeEntries = Object.entries(changes);
+
+        return `
+          <div class="p-4 rounded-xl border-2 ${
+            isApproved ? 'border-emerald-500/60 bg-emerald-50/50 dark:bg-emerald-950/30' :
+            isDeclined ? 'border-slate-300 dark:border-slate-700 bg-slate-100/50 dark:bg-slate-800/40 opacity-75' :
+            'border-indigo-400 dark:border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/30'
+          } shadow-xs space-y-3">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <span class="px-1.5 py-0.5 rounded font-mono font-bold text-[9px] uppercase ${
+                    isApproved ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300' :
+                    isDeclined ? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300' :
+                    'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300'
+                  }">
+                    ${this.escapeHtml(p.collection)}: ${this.escapeHtml(p.documentId)}
+                  </span>
+                  <span class="font-bold text-xs text-slate-900 dark:text-white">${this.escapeHtml(p.title)}</span>
+                </div>
+                <p class="text-[11px] text-slate-600 dark:text-slate-300 mt-1">${this.escapeHtml(p.summary)}</p>
+              </div>
+            </div>
+
+            <!-- Diff Table -->
+            <div class="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden font-mono text-[10px]">
+              <div class="px-2.5 py-1 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 text-slate-400 font-semibold uppercase text-[9px]">
+                Target Fields to Update
+              </div>
+              <div class="divide-y divide-slate-100 dark:divide-slate-800 p-2 space-y-1">
+                ${changeEntries.map(([k, v]) => `
+                  <div class="flex items-center justify-between py-0.5">
+                    <span class="text-slate-500">${this.escapeHtml(k)}:</span>
+                    <span class="font-bold text-indigo-600 dark:text-indigo-400">${this.escapeHtml(typeof v === 'object' ? JSON.stringify(v) : String(v))}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+
+            <!-- Approval Controls -->
+            <div class="pt-1 flex items-center justify-between gap-2">
+              ${isPending ? `
+                <div class="text-[10px] text-amber-700 dark:text-amber-400 font-medium flex items-center gap-1">
+                  <i data-lucide="lock" class="w-3 h-3"></i>
+                  <span>Requires your authorization</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button onclick="NexoraApp.declineProposal('${p.id}')" class="px-3 py-1.5 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-300 font-medium text-xs transition">
+                    Decline
+                  </button>
+                  <button onclick="NexoraApp.approveAndApplyProposal('${p.id}')" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-xs shadow-xs flex items-center gap-1.5 transition active:scale-95">
+                    <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                    <span>Approve & Apply</span>
+                  </button>
+                </div>
+              ` : isApproved ? `
+                <div class="w-full p-2 rounded-lg bg-emerald-100/80 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-[11px] font-semibold flex items-center justify-between">
+                  <span class="flex items-center gap-1.5">
+                    <i data-lucide="check-circle" class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400"></i>
+                    <span>Authorized & Committed to Database</span>
+                  </span>
+                  <span class="text-[9px] font-mono opacity-70">${p.appliedAt ? new Date(p.appliedAt).toLocaleTimeString() : ''}</span>
+                </div>
+              ` : `
+                <div class="w-full p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[11px] flex items-center gap-1.5">
+                  <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>
+                  <span>Proposal was declined. No changes written.</span>
+                </div>
+              `}
+            </div>
+          </div>
+        `;
+      },
+
+      formatCopilotText(raw) {
+        if (!raw) return '';
+        let text = this.escapeHtml(raw);
+
+        // Markdown Headers ### and ####
+        text = text.replace(/^#### (.*$)/gim, '<h5 class="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mt-3 mb-1">$1</h5>');
+        text = text.replace(/^### (.*$)/gim, '<h4 class="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-3 mb-1 pb-1 border-b border-slate-200 dark:border-slate-800">$1</h4>');
+        text = text.replace(/^## (.*$)/gim, '<h3 class="text-sm font-extrabold text-slate-900 dark:text-white mt-4 mb-1.5">$1</h3>');
+
+        // Horizontal rules
+        text = text.replace(/^---$/gim, '<hr class="my-2 border-slate-200 dark:border-slate-800"/>');
+
+        // Bold **text**
+        text = text.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-slate-900 dark:text-white">$1</strong>');
+        // Italic *text*
+        text = text.replace(/\*(.*?)\*/g, '<em class="italic">$1</em>');
+        // Inline code `code`
+        text = text.replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 font-mono text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">$1</code>');
+        // Currency amounts with monospace tabular formatting
+        text = text.replace(/(\$[\d,]+(\.\d{2})?|₹[\d,]+(\.\d{2})?)/g, '<span class="font-mono tabular-nums font-bold text-emerald-600 dark:text-emerald-400">$1</span>');
+        // Bullet lists
+        text = text.replace(/^\s*[-•]\s+(.*)$/gm, '<li class="ml-4 list-disc text-slate-700 dark:text-slate-300 py-0.5">$1</li>');
+        // Numbered lists
+        text = text.replace(/^\s*(\d+)\.\s+(.*)$/gm, '<li class="ml-4 list-decimal text-slate-700 dark:text-slate-300 py-0.5">$2</li>');
+        // Paragraph breaks
+        text = text.replace(/\n\n/g, '<div class="h-2"></div>');
+        text = text.replace(/\n/g, '<br/>');
+        return text;
+      },
+
       confirmAction(title, message, isDanger = false, onConfirm) {
         this.openModal(`
           <div class="space-y-4">
@@ -592,7 +1511,12 @@
         if (this.isDemoMode || !this.db || !this.currentUser || !this.currentOrg) return;
         try {
           const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js");
-          await setDoc(doc(this.db, 'organizations', this.currentOrg.id, subcollection, item.id), item);
+          const payload = {
+            ...item,
+            orgId: this.currentOrg.id,
+            updatedAt: new Date().toISOString()
+          };
+          await setDoc(doc(this.db, 'organizations', this.currentOrg.id, subcollection, item.id), payload, { merge: true });
         } catch (err) {
           this.handleFirestoreError(err, 'create', `organizations/${this.currentOrg.id}/${subcollection}/${item.id}`);
         }
@@ -601,8 +1525,24 @@
       async updateInFirestore(subcollection, itemId, updateData) {
         if (this.isDemoMode || !this.db || !this.currentUser || !this.currentOrg) return;
         try {
-          const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js");
-          await updateDoc(doc(this.db, 'organizations', this.currentOrg.id, subcollection, itemId), updateData);
+          const { doc, getDoc, setDoc, updateDoc } = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js");
+          const targetRef = doc(this.db, 'organizations', this.currentOrg.id, subcollection, itemId);
+          const docSnap = await getDoc(targetRef);
+          if (docSnap.exists()) {
+            await updateDoc(targetRef, updateData);
+          } else {
+            const store = this.getDataStore();
+            const sourceList = store[subcollection] || [];
+            const item = sourceList.find(x => x.id === itemId) || {};
+            await setDoc(targetRef, {
+              ...item,
+              ...updateData,
+              id: itemId,
+              orgId: this.currentOrg.id,
+              createdAt: item.createdAt || new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            });
+          }
         } catch (err) {
           this.handleFirestoreError(err, 'update', `organizations/${this.currentOrg.id}/${subcollection}/${itemId}`);
         }
@@ -730,10 +1670,10 @@
               { uid: user.uid, displayName: user.displayName || 'Authorized User', email: user.email || '', role: 'OWNER', title: 'VP of Operations', department: 'Executive', status: 'ACTIVE' },
               ...this.demoStore.members.slice(1)
             ],
-            projects: liveProjects.length > 0 ? liveProjects : this.demoStore.projects,
-            tasks: liveTasks.length > 0 ? liveTasks : this.demoStore.tasks,
-            requests: liveRequests.length > 0 ? liveRequests : this.demoStore.requests,
-            incidents: liveIncidents.length > 0 ? liveIncidents : this.demoStore.incidents,
+            projects: liveProjects.length > 0 ? liveProjects : this.demoStore.projects.map(p => ({ ...p, orgId })),
+            tasks: liveTasks.length > 0 ? liveTasks : this.demoStore.tasks.map(t => ({ ...t, orgId })),
+            requests: liveRequests.length > 0 ? liveRequests : this.demoStore.requests.map(r => ({ ...r, orgId })),
+            incidents: liveIncidents.length > 0 ? liveIncidents : this.demoStore.incidents.map(i => ({ ...i, orgId })),
             workflows: this.demoStore.workflows,
             goals: this.demoStore.goals,
             customers: this.demoStore.customers,
@@ -844,6 +1784,11 @@
 
       // Navigation & Tab Switching
       switchTab(tabKey) {
+        if (tabKey === 'ai-copilot') {
+          this.mobileSidebarOpen = false;
+          this.openAiCopilot();
+          return;
+        }
         this.activeTab = tabKey;
         this.mobileSidebarOpen = false;
         this.destroyCharts();
@@ -1107,6 +2052,7 @@
 
         const navItems = [
           { key: 'command-center', label: 'Command Center', icon: 'layout-dashboard', section: 'Core' },
+          { key: 'ai-copilot', label: 'AI Copilot (Finance)', icon: 'sparkles', badge: 'AI', section: 'Core' },
           { key: 'projects', label: 'Projects & Portfolio', icon: 'briefcase', section: 'Work' },
           { key: 'tasks', label: 'Tasks & Kanban', icon: 'check-square', section: 'Work' },
           { key: 'workflows', label: 'Workflow Studio', icon: 'git-pull-request', section: 'Work' },
@@ -1278,6 +2224,13 @@
                     </button>
                   ` : ''}
 
+                  <!-- AI Copilot Trigger Button (Top Command Bar) -->
+                  <button onclick="NexoraApp.toggleAiCopilot()" class="px-2.5 sm:px-3 py-1.5 bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition active:scale-95 border border-indigo-400/30" title="Open AI Business & Financial Copilot (⌘J)">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-300"></i>
+                    <span class="hidden sm:inline">AI Copilot</span>
+                    <kbd class="hidden md:inline px-1 py-0.2 text-[9px] bg-white/20 rounded font-mono text-white/90">⌘J</kbd>
+                  </button>
+
                   <!-- Quick Create (+) Button -->
                   <button onclick="NexoraApp.openQuickCreateModal()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-sm flex items-center gap-1.5 transition">
                     <i data-lucide="plus" class="w-3.5 h-3.5"></i>
@@ -1295,6 +2248,12 @@
                     <i data-lucide="${this.theme === 'dark' ? 'sun' : 'moon'}" class="w-4 h-4"></i>
                   </button>
 
+                  <!-- Firebase Setup Guide Button -->
+                  <button onclick="NexoraApp.openFirebaseGuideModal()" title="Firebase Step-by-Step Configuration Guide" class="px-2.5 py-1.5 rounded-lg text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-xs font-semibold flex items-center gap-1.5 transition">
+                    <i data-lucide="flame" class="w-3.5 h-3.5 text-amber-500"></i>
+                    <span class="hidden xl:inline">Firebase Guide</span>
+                  </button>
+
                   <!-- Help / Diagnostics Button -->
                   <button onclick="NexoraApp.openDiagnosticsModal()" title="System Diagnostics & Help" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
                     <i data-lucide="help-circle" class="w-4 h-4"></i>
@@ -1303,8 +2262,15 @@
               </header>
 
               <!-- Main Scrollable Content Container -->
-              <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8" id="workspace-content">
+              <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 relative" id="workspace-content">
                 ${this.renderActiveTabContent()}
+
+                <!-- Floating AI Copilot Trigger for Instant Viewport Access -->
+                <button onclick="NexoraApp.toggleAiCopilot()" class="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-40 px-3.5 py-3 rounded-full bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-xl hover:shadow-indigo-500/30 flex items-center gap-2 group transition-all duration-200 active:scale-95 border border-indigo-400/40" title="Open NEXORA Business & Financial Copilot (⌘J)">
+                  <i data-lucide="sparkles" class="w-4 h-4 text-amber-300 group-hover:rotate-12 transition-transform"></i>
+                  <span class="text-xs font-semibold hidden md:inline">AI Copilot</span>
+                  <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                </button>
               </main>
 
               <!-- Mobile Bottom Navigation Bar (Smart phone touch bar) -->
@@ -5446,6 +6412,13 @@
 
             <div class="text-[11px] text-slate-400 uppercase font-semibold tracking-wider pt-2">Workspace Navigation</div>
             <div class="space-y-1 text-xs cmd-group" id="workspace-cmd-group">
+              <button onclick="NexoraApp.closeModal(); NexoraApp.openAiCopilot();" class="cmd-item w-full text-left p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between text-indigo-600 dark:text-indigo-400 font-semibold">
+                <span class="flex items-center gap-2">
+                  <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-500"></i>
+                  <span>AI Copilot &middot; Financial & Business Intelligence</span>
+                </span>
+                <kbd class="text-[10px] text-slate-400 font-mono">J</kbd>
+              </button>
               <button onclick="NexoraApp.switchTab('command-center'); NexoraApp.closeModal();" class="cmd-item w-full text-left p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between">
                 <span class="font-medium text-slate-700 dark:text-slate-200">Command Center Dashboard</span>
                 <kbd class="text-[10px] text-slate-400 font-mono">D</kbd>
@@ -6996,11 +7969,16 @@
         this.initTheme();
         this.checkConfig();
 
-        // Keyboard Shortcut: Cmd/Ctrl + K for Universal Command Palette
+        // Keyboard Shortcuts: Cmd/Ctrl + K (Palette), Cmd/Ctrl + J (AI Copilot), Esc (Close)
         window.addEventListener('keydown', (e) => {
-          if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+          if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
             e.preventDefault();
             NexoraApp.openCommandPalette();
+          } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
+            e.preventDefault();
+            NexoraApp.toggleAiCopilot();
+          } else if (e.key === 'Escape' && NexoraApp.aiCopilotOpen) {
+            NexoraApp.closeAiCopilot();
           }
         });
 

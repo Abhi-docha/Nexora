@@ -17,8 +17,17 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function getPort(): number {
+  const portArgIndex = process.argv.indexOf('--port');
+  if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
+    const parsed = parseInt(process.argv[portArgIndex + 1], 10);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return 3000;
+}
+
+const PORT = getPort();
 const app = express();
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const isProduction = process.env.NODE_ENV === 'production';
 
 // Enable CORS
@@ -744,494 +753,39 @@ app.get('/api/owner/performance', async (req: Request, res: Response) => {
 
 /**
  * -----------------------------------------------------------------------------
- * 2B. NEXORA BUSINESS & FINANCIAL AI COPILOT
- * Strict Domain Limits & User-Authorization-Guarded Data Modification
+ * 2B. NEXORA BUSINESS & FINANCIAL AI COPILOT (OPENROUTER API)
+ * Strict Domain Limits, Bearer Token Auth, Tenant Scoping & Honest Metrics
  * -----------------------------------------------------------------------------
  */
-const COPILOT_SYSTEM_INSTRUCTION = `
-You are the NEXORA Enterprise Business & Financial Intelligence Officer (Copilot).
-You operate as a world-class Chief Strategy, Operations, and Financial Officer (CSO/CFO) partner to executive leadership.
-
-COMMUNICATION STYLE & DEPTH (MANDATORY REQUIREMENT):
-- The user requires deep, highly articulate, long-form, thorough, and genuinely helpful natural responses.
-- DO NOT provide brief, curt, robotic, or simplistic bulleted summaries.
-- Speak in a natural, empathetic, highly intelligent, and authoritative executive tone.
-- Break down complex business scenarios into comprehensive strategic sections:
-  1. Executive Summary & Strategic Takeaway
-  2. Granular Financial & Operational Breakdown (Ratios, Unit Economics, Budgets, Runway, Margins, Cash Flow)
-  3. Root Cause, Organizational Dependencies & Risk Assessment (SLAs, Governance, Compliance)
-  4. Strategic Action Plan & Step-by-Step Recommendations
-- Be detailed and generous with your context, explaining the "why", the "how", the trade-offs, and the downstream business impacts.
-
-USER DATA PERMISSION & PRIVACY POLICY (STRICT REQUIREMENT):
-- You must ONLY access and analyze private enterprise records (projects, tasks, budgets, purchase requests, incidents, vendors, customers) IF the user has explicitly granted permission (indicated by 'permissionGranted: true' in the request).
-- If 'permissionGranted: false':
-  * You MUST NOT assume, guess, or access private organizational data.
-  * You must politely explain that you are operating in "High-Level Advisory Mode" without private ledger access, and remind them that they can grant permission via the security disclosure banner to receive customized insights.
-  * You should still provide thorough, high-value strategic frameworks and financial calculations based on the theoretical scenario they describe.
-- STRICT MULTI-USER ISOLATION:
-  * You are speaking ONLY to the authenticated user identified in the context.
-  * Never mix, leak, combine, or cross-reference data from different users or organizations.
-  * Every tenant and user partition is strictly isolated.
-
-MANDATORY DOMAIN BOUNDARY & REFUSAL POLICY (NON-NEGOTIABLE):
-- YOU MUST ONLY answer inquiries related to corporate business management, enterprise operations, finance, accounting, governance, project delivery, and reliability.
-- STRICT REFUSAL ON NON-BUSINESS TOPICS:
-  If a user asks about ANY topic outside corporate business, finance, or enterprise operations—such as creative fiction, poetry, entertainment, gaming, sports, celebrity news, cooking recipes, personal relationships, dating, astrology, school homework, or trivia:
-  YOU MUST IMMEDIATELY AND FIRMLY REFUSE.
-  Politely and authoritatively explain:
-  "I am Nexora's Business & Financial Copilot. My operational mandate is strictly confined to enterprise business strategy, corporate finance, and operations management. Please submit an inquiry related to your organization's financials, procurement, project delivery, or operational performance."
-
-USER DATA MODIFICATION & AUTHORIZATION POLICY (STRICT REQUIREMENT):
-- The AI CANNOT directly mutate or write to the database.
-- Whenever the user asks to modify, approve, reject, escalate, resolve, update, or create any record (such as approving/rejecting a purchase request, changing an incident status or severity, updating a project budget or milestone, reassigning a task, modifying vendor risk, etc.):
-  1. YOU MUST NEVER CLAIM THAT YOU ALREADY UPDATED OR SAVED IT.
-  2. YOU MUST CALL the tool 'propose_data_change' with the exact parameters.
-  3. In your textual response, clearly summarize what is being proposed and explain that the change requires the user's explicit manual review and approval before any data is modified.
-- Always format currency values with appropriate symbols and commas (e.g., $18,500, ₹1,999).
-`;
 
 app.post('/api/ai/copilot', async (req: Request, res: Response): Promise<void> => {
   try {
-    const {
-      message,
-      history = [],
-      orgSnapshot,
-      userId = 'anonymous_user',
-      userName = 'Enterprise Executive',
-      userRole = 'OWNER',
-      permissionGranted = false
-    } = req.body;
-
-    if (!message || typeof message !== 'string') {
-      res.status(400).json({ error: 'A message prompt is required', code: 'MISSING_PROMPT' });
-      return;
-    }
-
-    const q = message.toLowerCase();
-
-    // 1. Strict Non-Business Refusal Guardrail (Common for both Gemini and Local Fallback)
-    const nonBusinessKeywords = [
-      'poem', 'poetry', 'recipe', 'cook', 'bake', 'food', 'diet', 'joke', 'story',
-      'movie', 'song', 'lyrics', 'game', 'gaming', 'dating', 'love', 'relationship',
-      'weather', 'vacation', 'hobby', 'football', 'basketball', 'cricket', 'baseball',
-      'horoscope', 'zodiac', 'trivia', 'essay', 'homework', 'philosophy', 'politics',
-      'celebrity', 'actor', 'music', 'novel', 'riddle', 'fiction'
-    ];
-    const isNonBusiness = nonBusinessKeywords.some(kw => q.includes(kw));
-
-    if (isNonBusiness) {
-      res.json({
-        text: `### 🛡️ Domain Boundary & Operational Scope Refusal
-
-I am **NEXORA's Enterprise Business & Financial Intelligence Officer**. My operational mandate, architecture, and regulatory safeguards are **strictly and exclusively confined to corporate business management, enterprise operations, and financial governance**.
-
-I cannot fulfill requests related to creative writing, entertainment, leisure, personal advice, or non-business topics. 
-
-Please submit an inquiry regarding your organization's:
-1. **Corporate Finance & Accounting**: Revenue, ARR/MRR trajectory, cash runway, operating margins, or capital expenditures.
-2. **Enterprise Procurement**: Requisitions, purchase approvals, vendor agreements, and contract terms.
-3. **Risk & Reliability**: Incident War Room triage, service SLAs, MTTR mitigation, and root cause analysis.
-4. **Initiative Portfolio**: Project milestones, sprint velocity, task queues, and departmental resource allocation.`,
-        proposedActions: [],
-        dataAccessStatus: permissionGranted ? 'GRANTED' : 'RESTRICTED',
-        userScope: userId
-      });
-      return;
-    }
-
-    const geminiApiKey = process.env.GEMINI_API_KEY || '';
-
-    // If Gemini API Key is NOT available, run the Deep Executive Deterministic Partner Engine
-    if (!geminiApiKey) {
-      const proposedActions: any[] = [];
-      let replyText = '';
-
-      if (!permissionGranted) {
-        // High-level Advisory Mode (Zero data access)
-        replyText = `### 🔒 Strategic Advisory Mode (Private Data Access Restricted)
-
-Hello **${userName}** (${userRole}). You are currently operating in **High-Level Advisory Mode**. In compliance with Nexora's Zero-Trust privacy architecture, **I have zero access to your organization's private ledgers, purchase requisitions, incidents, or customer accounts** until you explicitly authorize data inspection.
-
----
-
-### Executive Strategic Guidance & Framework:
-
-1. **Strategic Assessment**:
-   When analyzing corporate finance and operational health without access to live tenant records, standard enterprise benchmarks advise maintaining a minimum of **12 to 18 months of operating runway** and structuring procurement thresholds where any non-budgeted expense exceeding **$10,000** requires multi-tier sign-off from both the Department Lead and Finance Controller.
-
-2. **Capital Efficiency & Cash Flow Best Practices**:
-   - **Net Dollar Retention (NDR)**: Maintain a benchmark target of ≥ 115–125% for SaaS enterprise accounts.
-   - **CAC Payback Period**: Target recovery of customer acquisition costs within 8 to 12 months.
-   - **SLA Breach Tolerance**: Production outages (P1) should have an automated MTTR objective of under 60 minutes with warm failovers.
-
-3. **How to Unlock Deep Data-Grounded Intelligence**:
-   If you wish for me to inspect your **actual projects**, **live departmental budgets**, **pending purchase requisitions**, **vendor contracts**, and **incident war room logs**:
-   - Click the **"Grant Data Access"** button in the Copilot header.
-   - Review the **Security & Privacy Caution Disclosure**.
-   - Confirm to authorize local organizational ledger analysis. Your data remains strictly isolated to your user account and is never shared or cross-referenced with any other user.`;
-      } else {
-        // Data Access Granted: Deliver deep, comprehensive, long-form executive analysis!
-        if (q.includes('approve') || q.includes('reject') || q.includes('request') || q.includes('req-')) {
-          const reqMatch = q.match(/req-\d+/);
-          const reqId = reqMatch ? reqMatch[0] : 'req-501';
-          const isApprove = !q.includes('reject');
-
-          proposedActions.push({
-            id: `prop-${Date.now()}-req`,
-            collection: 'requests',
-            documentId: reqId,
-            title: `${isApprove ? 'Approve' : 'Reject'} Purchase Requisition #${reqId}`,
-            summary: `Executive sign-off on Datadog APM Enterprise Renewal ($18,500). Validated against Q4 Engineering Infrastructure OPEX budget. Requires human confirmation to commit to Cloud Firestore.`,
-            changes: {
-              status: isApprove ? 'APPROVED' : 'REJECTED',
-              decidedAt: new Date().toISOString()
-            },
-            status: 'PENDING_USER_APPROVAL',
-            timestamp: new Date().toISOString()
-          });
-
-          replyText = `### 📋 Comprehensive Requisition Audit & Executive Recommendation
-
-**User Context**: Authorized inspection for **${userName}** &middot; Account ID: \`${userId}\` &middot; Role: **${userRole}**  
-**Target Requisition**: **#${reqId}** — *Datadog APM & Cloud Infrastructure Telemetry Renewal*  
-**Committed Amount**: **$18,500 USD** (Annual Contract)  
-**Department**: Engineering & DevOps Infrastructure
-
----
-
-#### 1. Strategic Context & Business Justification
-Requisition **#${reqId}** represents the mandatory annual renewal for enterprise application performance monitoring (APM) and distributed tracing across Nexora's core API microservices. Over the previous 12 months, this observability pipeline has intercepted 14 latency degradation anomalies and facilitated a **99.98% platform uptime**, preserving high customer trust and SLA compliance.
-
-#### 2. Fiscal Impact & Budget Utilization Analysis
-- **Departmental OPEX Allocation**: Engineering Infrastructure holds an allocated Q4 budget of **$95,000**.
-- **Current Spent to Date**: **$48,200** (50.7% utilization).
-- **Post-Approval Budget Position**: If approved, total utilization will increase to **$66,700** (70.2% of allocation), leaving a secure contingency buffer of **$28,300** for unexpected server auto-scaling demands in Q4.
-- **Runway & Cash Flow Impact**: Monthly burn rate will experience a negligible amortized variance of **$1,541.67/month**, maintaining current overall organizational runway comfortably at **14.8 months**.
-
-#### 3. Risk & Governance Evaluation
-- **Approval Risk**: **LOW**. The vendor (Datadog) is classified under Tier-1 Approved Enterprise Suppliers with active SOC-2 Type II compliance and ISO 27001 data processing agreements.
-- **Consequence of Non-Renewal / Rejection**: Rejection would force a manual fallback onto uncoordinated cloud logs, increasing Mean Time to Resolution (MTTR) during outages by an estimated **3.4x** and risking contractual SLA penalty clauses with enterprise accounts.
-
-#### 4. Structured Authorization Proposal
-In strict compliance with Nexora's **Zero-Trust Human-in-the-Loop Governance Policy**, **I have NOT committed this change automatically**. I have generated a structured **Authorization Diff Card** below.
-
-Please inspect the proposal parameters and click **Approve & Apply** to formally write the decision to Cloud Firestore, or click **Decline** to cancel the operation.`;
-        } else if (q.includes('incident') || q.includes('resolve') || q.includes('triage') || q.includes('war room') || q.includes('inc-')) {
-          const incMatch = q.match(/inc-\d+/);
-          const incId = incMatch ? incMatch[0] : 'inc-901';
-
-          if (q.includes('resolve')) {
-            proposedActions.push({
-              id: `prop-${Date.now()}-inc`,
-              collection: 'incidents',
-              documentId: incId,
-              title: `Formally Close Incident #${incId} (Mark RESOLVED)`,
-              summary: `DNS fallback and connection pooling verified; latency metrics stabilized below 45ms. Requires executive commander sign-off to commit.`,
-              changes: {
-                status: 'RESOLVED',
-                resolvedAt: new Date().toISOString()
-              },
-              status: 'PENDING_USER_APPROVAL',
-              timestamp: new Date().toISOString()
-            });
-
-            replyText = `### 🚨 Operational Incident Resolution Assessment
-
-**Investigator**: AI Operations Copilot on behalf of **${userName}** (\`${userId}\`)  
-**Target Incident**: **#${incId}** — *Payment Webhook Dispatch Latency Spike*  
-**Assigned Subsystem**: Core Billing Gateway & Webhook Router
-
----
-
-#### 1. Stabilization & Diagnostic Telemetry
-The war room engineering team deployed automated persistent connection pooling and failover routing endpoints at 09:14 UTC. Comprehensive telemetry over the last 45 minutes verifies:
-- **P99 API Latency**: Normalized from an anomalous **4,200ms** peak down to **42ms** baseline.
-- **Webhook Delivery Success Rate**: Restored to **99.98%** with 0 dropped payloads in the active queue.
-- **Dodo Payments Reconciliation**: All 18 pending payment status events have been re-processed idempotently without double-billing or dropped transactions.
-
-#### 2. Downstream Enterprise Impact Assessment
-- **Financial Exposure**: Total affected checkout volume was constrained to **$1,240 USD** across 4 customer transactions; all have successfully posted.
-- **Customer SLA Assessment**: No enterprise SLA penalty thresholds were breached.
-
-#### 3. Actionable Sign-Off Proposal
-I have prepared the resolution proposal for War Room commander review. As mandated by Nexora's governance framework, **the incident will remain active until you manually confirm**. Please inspect the proposal card below and click **Approve & Apply** to mark this incident officially resolved.`;
-          } else {
-            replyText = `### 🚨 Incident War Room Executive Briefing & Triage
-
-**Authorized Operational Context**: Scoped strictly to **${userName}** &middot; Account ID: \`${userId}\`
-
----
-
-#### 1. Current Active Platform Disruption
-- **Incident Reference**: **#inc-901** (*Payment Webhook Dispatch Timeout Anomaly*)
-- **Assigned Severity**: **HIGH (P2)**
-- **Detected At**: Today, 08:42 UTC (Duration: 1h 22m)
-- **Incident Commander**: David Chen (SecOps Lead)
-- **Subsystem Impacted**: Inbound & Outbound Billing Webhook Dispatches
-
-#### 2. Root Cause Analysis & Impact Footprint
-- **Root Cause**: A regional edge gateway experienced intermittent TCP socket exhaustion following a surge in concurrent checkout callback events from international payment corridors.
-- **Impact Radius**: Approximately **1.8%** of inbound payment webhooks experienced delivery delays between 30 and 45 seconds. No payment data or cryptographic signatures were corrupted.
-- **Current Posture**: **MONITORING**. Traffic failover routing has been successfully applied, and background queues are clearing at 120 jobs/sec.
-
-#### 3. Strategic Recommendations for Leadership
-1. **Immediate Action**: Maintain active war room monitoring for the next 30 minutes until queue backlog reads zero.
-2. **Preventative Action**: Allocate work item to implement elastic Redis webhook queue buffering to absorb 10x peak traffic bursts.
-3. **Resolution**: Once metrics remain nominal, instruct me to *"resolve incident #inc-901"* to generate a formal sign-off card.`;
-          }
-        } else if (q.includes('financial') || q.includes('health') || q.includes('budget') || q.includes('mrr') || q.includes('runway') || q.includes('arr') || q.includes('revenue')) {
-          replyText = `### 📊 NEXORA Enterprise Financial Health & Capital Intelligence Report
-
-**Authoritative User Context**: Prepared exclusively for **${userName}** (\`${userId}\`) &middot; Role: **${userRole}**  
-**Audit Scope**: Tenant Organization Financial Ledgers, Revenue Contracts, Budgets, and Dodo Gateway Reconciliations
-
----
-
-#### 1. Top-Line Revenue & Contract Velocity
-- **Annual Recurring Revenue (ARR)**: **$495,000 USD** across 3 Enterprise Tier contracts.
-- **Monthly Recurring Revenue (MRR)**: **$41,250 USD / month** (Run-rate pacing +12.4% YoY).
-- **Net Dollar Retention (NDR)**: **122%** (Industry Top-Decile Benchmark: 120%).
-- **Average Contract Value (ACV)**: **$165,000 USD** with 100% multi-year renewal commitments.
-
-#### 2. Capital Expenditure, OPEX & Cash Runway Analysis
-- **Total Capital Allocated (Fiscal Year)**: **$340,000 USD** across 4 strategic initiatives.
-- **Cumulative Spent to Date**: **$177,500 USD** (Overall budget utilization: **52.2%**).
-- **Monthly Net Cash Burn**: **$38,400 USD / month** (reflecting engineering headcount, cloud infrastructure, and software licenses).
-- **Cash Runway Posture**: **14.8 Months** based on existing treasury reserves and projected operating cash flow. This places the organization in a **secure position** well above the 12-month minimum contingency threshold.
-
-#### 3. Procurement Pipeline & Near-Term Outflows
-- **Pending Requisitions Awaiting Sign-off**: **$53,500 USD**
-  * *Requisition #req-501*: Datadog APM Enterprise Renewal (**$18,500**) — Recommended for Approval.
-  * *Requisition #req-502*: Cloud GPU Cluster Pilot (**$35,000**) — Under Technical Architecture Review.
-- **Contracted Vendor Liabilities**: **$447,000 USD** annualized across Tier-1 vendors (AWS Cloud, CrowdStrike Cybersecurity, and Slack Enterprise Grid).
-
-#### 4. Strategic Executive Recommendations
-1. **Capital Allocation**: Authorize Requisition #req-501 to prevent telemetry gaps, while deferring non-essential SaaS seat expansion to Q1.
-2. **Pricing Optimization**: Transition new inbound customers from the Growth Tier (₹499/mo) to the Scale Tier (₹1,999/mo) to accelerate MRR expansion.
-3. **Budget Guardrails**: Instruct team leads to maintain departmental spend under 65% utilization prior to the November 15 fiscal review.
-
-*How may I assist further with your cash flow projections, procurement approvals, or operational milestones?*`;
-        } else {
-          replyText = `### 🌐 Comprehensive Enterprise Operational & Portfolio Overview
-
-**Executive Partner**: Operational Intelligence for **${userName}** (\`${userId}\`) &middot; **${userRole}**  
-**Data Access Status**: **FULL OPERATIONAL ACCESS GRANTED** (Strictly isolated to your account)
-
----
-
-#### 1. Strategic Initiatives & Portfolio Health
-- **Active Initiatives**: 4 strategic projects currently deployed across engineering, compliance, and growth.
-  * **HORIZON Next-Gen Cloud Platform**: **68% Complete** &middot; Status: **HEALTHY** &middot; Budget Spent: $54,000 / $80,000.
-  * **ISO-27001 Security Audit & Hardening**: **52% Complete** &middot; Status: **WATCH** (Minor delay on firewall port sign-offs).
-  * **Customer Success Net Retention Initiative**: **41% Complete** &middot; Status: **AT RISK** (Target milestone overdue by 4 days).
-  * **Zero-Trust Infrastructure Gateway**: **84% Complete** &middot; Status: **HEALTHY** &middot; On schedule for Q4 release.
-
-#### 2. Requisitions & Approval Pipeline
-- **Active Requisitions**: 3 items in the universal approval queue.
-- **Pending Review**: **$18,500** purchase request (#req-501) for APM telemetry renewal.
-- **Workflow Automation**: 100% of purchase requests under $2,500 are automatically routed without executive bottlenecks.
-
-#### 3. Reliability & War Room Status
-- **System SLA Availability**: **99.98%** (Contractual commitment: 99.95%).
-- **Active Incident**: #inc-901 (Payment webhook latency) is currently stabilized under **MONITORING**.
-
-#### 4. Actionable Next Steps
-- You can instruct me to:
-  * *"Approve request #req-501"* — to generate an authorization sign-off card.
-  * *"Resolve incident #inc-901"* — to close out the War Room ticket.
-  * *"Deep dive into project HORIZON"* — to audit milestones, blockers, and team velocity.
-
-Please let me know how you would like to proceed.`;
-        }
-      }
-
-      res.json({
-        text: replyText,
-        proposedActions,
-        dataAccessStatus: permissionGranted ? 'GRANTED' : 'RESTRICTED',
-        userScope: userId
-      });
-      return;
-    }
-
-    // -------------------------------------------------------------------------
-    // Gemini API Powered Intelligence with Strict Permission-Gated Context
-    // -------------------------------------------------------------------------
-    const { GoogleGenAI, Type } = await import('@google/genai');
-    const ai = new GoogleGenAI({
-      apiKey: geminiApiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
-
-    const proposeDataChangeDeclaration = {
-      name: 'propose_data_change',
-      description: 'Propose a structured modification, status transition, or new record in the enterprise database (requests, incidents, projects, tasks, vendors, assets, goals). NEVER applies changes automatically; requires the human user to explicitly review and click Approve & Apply.',
-      parameters: {
-        type: Type.OBJECT,
-        properties: {
-          collection: {
-            type: Type.STRING,
-            description: "Target subcollection, one of: 'requests', 'incidents', 'projects', 'tasks', 'vendors', 'assets', 'goals'.",
-          },
-          documentId: {
-            type: Type.STRING,
-            description: "Document ID being modified (e.g. 'req-501', 'inc-901', 'proj-101') or 'new' if creating a record.",
-          },
-          title: {
-            type: Type.STRING,
-            description: "Concise human-readable action label (e.g., 'Approve Purchase Request #req-501').",
-          },
-          summary: {
-            type: Type.STRING,
-            description: 'Business rationale explaining why this action is recommended.',
-          },
-          changes: {
-            type: Type.OBJECT,
-            description: 'Key-value map of exact fields and new values to update (e.g. {"status": "APPROVED"}).',
-          },
-        },
-        required: ['collection', 'documentId', 'title', 'summary', 'changes'],
-      },
-    };
-
-    // Construct live organization context summary ONLY IF permission is granted
-    let contextPrompt = '';
-    if (permissionGranted && orgSnapshot) {
-      const orgInfo = orgSnapshot.org || {};
-      const projects = (orgSnapshot.projects || []).map((p: any) =>
-        `• [ID: ${p.id}] ${p.name} (Key: ${p.key}, Health: ${p.health}, Status: ${p.status}, Budget: $${p.budget || 0}, Spent: $${p.spent || 0}, Completion: ${p.completionPercent || 0}%)`
-      ).join('\n');
-      const requests = (orgSnapshot.requests || []).map((r: any) =>
-        `• [ID: ${r.id}] ${r.title} (Type: ${r.requestType}, Status: ${r.status}, Priority: ${r.priority}, Amount: $${r.amount || 0}, Requester: ${r.requesterUid})`
-      ).join('\n');
-      const incidents = (orgSnapshot.incidents || []).map((i: any) =>
-        `• [ID: ${i.id}] ${i.title} (Severity: ${i.severity}, Status: ${i.status}, Affected Service: ${i.affectedService})`
-      ).join('\n');
-      const vendors = (orgSnapshot.vendors || []).map((v: any) =>
-        `• [ID: ${v.id}] ${v.name} (Category: ${v.category}, Criticality: ${v.criticality}, Contract: $${v.contractValue || 0}, Renewal: ${v.renewalDate})`
-      ).join('\n');
-      const goals = (orgSnapshot.goals || []).map((g: any) =>
-        `• [ID: ${g.id}] ${g.title} (Level: ${g.level}, Progress: ${g.progress}%, Status: ${g.status})`
-      ).join('\n');
-
-      contextPrompt = `
-ACTIVE TENANT SNAPSHOT (PERMISSION EXPLICITLY GRANTED BY USER):
-User Identity: ${userName} (UID: ${userId}, Role: ${userRole})
-Organization: ${orgInfo.name || 'Enterprise Cloud'} (Plan: ${orgInfo.planId || 'SCALE'}, Currency: ${orgInfo.currency || 'USD'})
-
-Active Projects (${(orgSnapshot.projects || []).length}):
-${projects || 'None'}
-
-Universal Requests (${(orgSnapshot.requests || []).length}):
-${requests || 'None'}
-
-Incidents (${(orgSnapshot.incidents || []).length}):
-${incidents || 'None'}
-
-Vendors (${(orgSnapshot.vendors || []).length}):
-${vendors || 'None'}
-
-Strategic Goals (${(orgSnapshot.goals || []).length}):
-${goals || 'None'}
-`;
-    } else {
-      contextPrompt = `
-DATA ACCESS STATUS: RESTRICTED
-The user has NOT granted permission to access their private operational records.
-Do not invent or fabricate specific customer, project, or financial numbers.
-Provide deep, articulate, senior executive guidance, formulas, financial modeling principles, and operational frameworks.
-Remind the user they can enable Full Data Access in the Copilot header to allow customized inspection of their live ledger.
-`;
-    }
-
-    const contents: any[] = [];
-    contents.push({
-      role: 'user',
-      parts: [{ text: `Authoritative Session Context:\n${contextPrompt}` }],
-    });
-    contents.push({
-      role: 'model',
-      parts: [{
-        text: permissionGranted
-          ? `I have loaded your organization's private operational ledger under strict isolation for ${userName} (${userId}). I will provide comprehensive, deeply articulated, long-form executive partner analyses and invoke propose_data_change for any record updates.`
-          : `I understand that private data access is restricted. I will act as a senior strategic advisor providing rigorous corporate finance, operational frameworks, and governance best practices without accessing private records.`
-      }],
-    });
-
-    if (Array.isArray(history)) {
-      for (const turn of history.slice(-6)) {
-        if (turn.role === 'user' || turn.role === 'model') {
-          contents.push({
-            role: turn.role,
-            parts: [{ text: String(turn.text || '') }],
-          });
-        }
-      }
-    }
-
-    contents.push({
-      role: 'user',
-      parts: [{ text: message }],
-    });
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents,
-      config: {
-        systemInstruction: COPILOT_SYSTEM_INSTRUCTION,
-        tools: [{
-          functionDeclarations: [proposeDataChangeDeclaration],
-        }],
-      },
-    });
-
-    const proposedActions: any[] = [];
-    if (response.functionCalls && response.functionCalls.length > 0) {
-      for (const call of response.functionCalls) {
-        if (call.name === 'propose_data_change') {
-          const args: any = call.args || {};
-          let parsedChanges = args.changes;
-          if (typeof parsedChanges === 'string') {
-            try {
-              parsedChanges = JSON.parse(parsedChanges);
-            } catch {
-              parsedChanges = { raw: args.changes };
-            }
-          }
-          proposedActions.push({
-            id: `prop-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-            collection: args.collection || 'requests',
-            documentId: args.documentId || 'unknown',
-            title: args.title || 'Proposed Record Modification',
-            summary: args.summary || 'AI proposed change requiring your explicit human sign-off.',
-            changes: parsedChanges || {},
-            status: 'PENDING_USER_APPROVAL',
-            timestamp: new Date().toISOString(),
-          });
-        }
-      }
-    }
-
-    const replyText = response.text || (proposedActions.length > 0
-      ? 'I have formulated a structured operational proposal based on your query. In accordance with Nexora governance policies, please inspect the details below and click **Approve & Apply** to commit the changes to your organization.'
-      : 'I have processed your operational inquiry.');
-
-    res.json({
-      text: replyText,
-      proposedActions,
-      dataAccessStatus: permissionGranted ? 'GRANTED' : 'RESTRICTED',
-      userScope: userId
-    });
+    const { handleAiCopilotRequest } = await import('./functions/src/ai/copilotService.ts');
+    const result = await handleAiCopilotRequest(req.headers.authorization, req.body);
+    res.json(result);
+    return;
   } catch (err: any) {
-    console.error('[AI Copilot Server Error]', err);
-    res.status(500).json({
+    const statusCode = err.statusCode || (err.name === 'AuthError' ? 401 : 500);
+    res.status(statusCode).json({
       error: err.message || 'Failed to process AI copilot query',
-      code: 'COPILOT_ERROR',
+      code: err.code || 'COPILOT_ERROR',
+      retryAfter: err.retryAfter,
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+});
+
+app.get(['/api/ai/status', '/api/ai/health'], async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const { handleAiStatus } = await import('./functions/src/ai/copilotService.ts');
+    const status = await handleAiStatus();
+    res.json(status);
+  } catch (err: any) {
+    res.status(500).json({
+      error: err.message || 'Failed to check AI status',
+      service: 'nexora-openrouter-ai',
+      provider: 'openrouter',
     });
   }
 });

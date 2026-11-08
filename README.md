@@ -109,3 +109,45 @@ NEXORA's core frontend runs entirely via Firebase Authentication and Cloud Fires
 4. **Hard Auth Administration Adapter (`AuthAdministrationAdapter`)**:
    - *Why Backend Required*: The Firebase Web Client SDK cannot disable, purge, or forcefully revoke OAuth refresh tokens of another user. This requires Firebase Admin SDK on a secure server.
    - *Current Implementation*: Application-level account suspension (`accountStatus: 'SUSPENDED'`) enforced by Firestore security rules.
+
+---
+
+## 6. OpenRouter AI Operations Copilot Integration
+
+NEXORA features a server-authoritative, zero-leakage AI Operations Copilot powered by **OpenRouter** (`https://openrouter.ai/api/v1`) using the designated model **`qwen/qwen3.8-27b`**.
+
+### Architecture & Security Invariants
+- **Zero API Key Leakage**: `OPENROUTER_API_KEY` is loaded exclusively inside server environments (`server.ts` in dev preview, `netlify/functions/api.ts` in Netlify production). The client browser never receives or possesses the API key.
+- **Strict Business & Financial Domain Boundary**: The copilot strictly intercepts and refuses non-business inquiries (fiction, gaming, entertainment, cooking, sports, non-business code).
+- **Zero Hallucination / No Mock Fallback**: If `OPENROUTER_API_KEY` is missing or the upstream provider fails, the copilot returns a truthful status code (`503 AI_NOT_CONFIGURED`, `429 OPENROUTER_RATE_LIMITED`, `502 OPENROUTER_UNAUTHORIZED`), never canned numbers.
+- **Mutual Exclusivity (Demo vs Live)**:
+  - **Demo Mode (`demoMode: true`)**: Uses fixed synthetic fixtures labeled `[SYNTHETIC DEMO DATA]`. Never queries or exposes real customer records.
+  - **Live Account Mode (`demoMode: false`)**: Verifies Firebase ID Token cryptographically, verifies tenant membership in `/organizations/{orgId}/members/{uid}`, verifies explicit user consent in `/users/{uid}/ai_consent/active`, and computes metrics using the integer-cent GAAP finance engine.
+- **Explicit Human Confirmation for Database Mutations**: The copilot cannot directly mutate Firestore. It outputs structured `propose_data_change` actions that render review cards in the UI requiring the user's manual sign-off.
+- **Model Slug**: `qwen/qwen3.8-27b` (exact OpenRouter slug).
+
+### Environment Configuration Variables
+```env
+# OpenRouter AI Copilot
+OPENROUTER_API_KEY="sk-or-v1-..."
+OPENROUTER_MODEL="qwen/qwen3.8-27b"
+OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
+AI_ENABLED="true"
+AI_ALLOW_PAID_MODELS="true"
+```
+
+### Manual Verification Script (cURL)
+```bash
+# 1. Check AI Health Status (No auth required)
+curl -s http://localhost:3000/api/ai/status | jq .
+
+# 2. Test Policy Guard Refusal (Demo Mode)
+curl -s -X POST http://localhost:3000/api/ai/copilot \
+  -H "Content-Type: application/json" \
+  -d '{"message": "tell me a bedtime story about dragons", "demoMode": true}' | jq .
+
+# 3. Test Synthetic Demo Inquiry (Requires OPENROUTER_API_KEY)
+curl -s -X POST http://localhost:3000/api/ai/copilot \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Analyze our budget and cash burn runway", "demoMode": true}' | jq .
+```

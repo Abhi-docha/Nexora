@@ -6,12 +6,36 @@
  * Checkout Flow, Netlify Functions Handler, and Billing Synchronization.
  */
 
+import 'dotenv/config';
 import crypto from 'crypto';
+
+// Provide safe test defaults if .env is missing in environment
+if (!process.env.DODO_PAYMENTS_WEBHOOK_KEY) {
+  process.env.DODO_PAYMENTS_WEBHOOK_KEY = 'whsec_dGVzdF93ZWJob29rX3NlY3JldF9mb3JfdmVyaWZpY2F0aW9uXzEyMzQ1';
+}
+if (!process.env.DODO_PAYMENTS_API_KEY) {
+  process.env.DODO_PAYMENTS_API_KEY = 'test_dodo_api_key_12345';
+}
+if (!process.env.FIREBASE_PROJECT_ID) {
+  process.env.FIREBASE_PROJECT_ID = 'nexora-enterprise';
+}
+
 import { handler } from '../netlify/functions/api';
 import { getDodoConfig, getDodoClient } from '../functions/src/config/dodo';
 import { getDodoProductIdForPlan, getPlanDefinition, resolvePlanFromDodoProductId } from '../functions/src/config/plans';
 import { getFirebaseAdminDiagnostics, verifyBearerToken, AuthError } from '../functions/src/auth/firebaseAuth';
 import { verifyAndParseDodoWebhook, processDodoWebhookEvent, WebhookVerificationError } from '../functions/src/billing/webhook';
+import {
+  calculateMRR,
+  calculateARR,
+  calculateCashflow,
+  calculateBurnRate,
+  calculateRunway,
+  formatCurrency,
+  RevenueTransaction,
+  ExpenseTransaction
+} from '../functions/src/finance/financeEngine';
+import { isNonBusinessQuery, handleAiStatus } from '../functions/src/ai/copilotService';
 
 let passed = 0;
 let failed = 0;
@@ -351,6 +375,145 @@ async function runTestSuite() {
   assert(notFoundRes.statusCode === 404, 'Unknown route returns 404');
   const notFoundBody = JSON.parse(notFoundRes.body);
   assert(notFoundBody.code === 'ROUTE_NOT_FOUND', '404 returns structured code ROUTE_NOT_FOUND');
+
+  // =========================================================================
+  // FINANCE FOUNDATION ENGINE TESTS (Honest Ledger & Integer Cent Precision)
+  // =========================================================================
+  console.log('\n--- Testing Financial Engine Foundation ---');
+
+  // Format currency
+  assert(formatCurrency(1250000, 'USD') === '$12,500', 'formatCurrency formats USD correctly');
+  assert(formatCurrency(49900, 'INR') === '₹499', 'formatCurrency formats INR correctly');
+
+  // Empty data safety & disclosure
+  const emptyMRR = calculateMRR([], 'USD');
+  assert(emptyMRR.value === 0, 'calculateMRR returns 0 cents on empty transactions');
+  assert(emptyMRR.isInsufficientData === true, 'calculateMRR sets isInsufficientData on empty dataset');
+  assert(typeof emptyMRR.formula === 'string', 'calculateMRR includes GAAP-conscious formula definition');
+
+  // Real MRR calculation
+  const sampleRev: RevenueTransaction[] = [
+    { id: 'rev-1', orgId: 'org_1', amountCents: 500000, currency: 'USD', isRecurring: true, recurringInterval: 'monthly', status: 'PAID', date: '2026-10-01', description: 'Enterprise Monthly' },
+    { id: 'rev-2', orgId: 'org_1', amountCents: 1200000, currency: 'USD', isRecurring: true, recurringInterval: 'annual', status: 'PAID', date: '2026-10-01', description: 'Scale Annual' }, // $1,000/mo amortized
+  ];
+  const calculatedMRR = calculateMRR(sampleRev, 'USD');
+  assert(calculatedMRR.value === 600000, 'calculateMRR amortizes annual and sums monthly ($6,000.00)');
+  assert(calculatedMRR.formatted === '$6,000 / mo', 'calculateMRR formats calculated total');
+
+  // ARR = 12 * MRR
+  const calculatedARR = calculateARR(calculatedMRR);
+  assert(calculatedARR.value === 7200000, 'calculateARR computes 12 * MRR ($72,000.00)');
+
+  // Cashflow & Burn rate
+  const sampleExp: ExpenseTransaction[] = [
+    { id: 'exp-1', orgId: 'org_1', amountCents: 350000, currency: 'USD', category: 'OPEX', paymentStatus: 'PAID', date: '2026-10-05', description: 'Cloud Infrastructure' },
+    { id: 'exp-2', orgId: 'org_1', amountCents: 150000, currency: 'USD', category: 'OPEX', paymentStatus: 'PAID', date: '2026-10-10', description: 'Monitoring License' }
+  ];
+  const cashflow = calculateCashflow(sampleRev, sampleExp, 'USD');
+  assert(cashflow.value.netCashflowCents === 1200000, 'calculateCashflow accurately calculates cash inflows minus outflows');
+
+  const burn = calculateBurnRate(500000, 1700000, 1, 'USD');
+  assert(burn.value === 0, 'calculateBurnRate reports 0 net burn when net cashflow is positive');
+
+  const runwayZeroBurn = calculateRunway(10000000, 0);
+  assert(runwayZeroBurn.value === null, 'calculateRunway returns null value when burn is zero');
+  assert(runwayZeroBurn.formatted.includes('Profitable'), 'calculateRunway indicates profitable / infinite runway');
+
+  const runwayWithBurn = calculateRunway(10000000, 1000000);
+  assert(runwayWithBurn.value === 10, 'calculateRunway calculates 10.0 months runway');
+
+  // =========================================================================
+  // AI COPILOT POLICY GUARD & ROUTE PARITY TESTS
+  // =========================================================================
+  console.log('\n--- Testing AI Copilot Boundaries & Endpoints ---');
+
+  // Non-business refusal queries
+  assert(isNonBusinessQuery('tell me a bedtime story about dragons') === true, 'isNonBusinessQuery intercepts fiction');
+  assert(isNonBusinessQuery('what is the recipe for chocolate cake') === true, 'isNonBusinessQuery intercepts cooking queries');
+  assert(isNonBusinessQuery('who won the football game last night') === true, 'isNonBusinessQuery intercepts sports');
+  assert(isNonBusinessQuery('calculate MRR for enterprise cohort') === false, 'isNonBusinessQuery permits MRR calculation');
+  assert(isNonBusinessQuery('audit pending purchase requisitions') === false, 'isNonBusinessQuery permits requisition auditing');
+  assert(isNonBusinessQuery('analyze cash runway and vendor contracts') === false, 'isNonBusinessQuery permits runway analysis');
+
+  // Diagnostic AI status endpoint
+  const aiStatus = await handleAiStatus();
+  assert(aiStatus.service === 'nexora-openrouter-ai', 'handleAiStatus returns service name nexora-openrouter-ai');
+  assert(aiStatus.provider === 'openrouter', 'handleAiStatus specifies openrouter provider');
+  assert(aiStatus.primaryModel === 'qwen/qwen3.8-27b', 'handleAiStatus specifies exact primary model qwen/qwen3.8-27b');
+  assert(aiStatus.apiEndpoint === 'https://openrouter.ai/api/v1', 'handleAiStatus points to OpenRouter API endpoint');
+
+  // Netlify /ai/status route
+  const netlifyAiStatusRes: any = await handler(
+    {
+      path: '/api/ai/status',
+      httpMethod: 'GET',
+      headers: {},
+      isBase64Encoded: false,
+    } as any,
+    {} as any
+  );
+  assert(netlifyAiStatusRes.statusCode === 200, 'Netlify handler responds 200 to GET /api/ai/status');
+  const netlifyAiStatusBody = JSON.parse(netlifyAiStatusRes.body);
+  assert(netlifyAiStatusBody.service === 'nexora-openrouter-ai', 'Netlify /api/ai/status returns nexora-openrouter-ai service');
+  assert(netlifyAiStatusBody.primaryModel === 'qwen/qwen3.8-27b', 'Netlify /api/ai/status reports exact qwen/qwen3.8-27b');
+  assert(netlifyAiStatusBody.provider === 'openrouter', 'Netlify /api/ai/status reports openrouter provider');
+
+  // Netlify /ai/health route
+  const netlifyAiHealthRes: any = await handler(
+    {
+      path: '/api/ai/health',
+      httpMethod: 'GET',
+      headers: {},
+      isBase64Encoded: false,
+    } as any,
+    {} as any
+  );
+  assert(netlifyAiHealthRes.statusCode === 200, 'Netlify handler responds 200 to GET /api/ai/health');
+
+  // Netlify /ai/copilot route requires Bearer token for live account
+  const netlifyAiCopilotUnauth: any = await handler(
+    {
+      path: '/api/ai/copilot',
+      httpMethod: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ message: 'audit requisitions', orgId: 'org_test' }),
+      isBase64Encoded: false,
+    } as any,
+    {} as any
+  );
+  assert(netlifyAiCopilotUnauth.statusCode === 401, 'Netlify handler rejects unauthenticated POST /api/ai/copilot with 401');
+
+  // Netlify /ai/copilot rejects GET with 405 Method Not Allowed
+  const netlifyAiCopilotGet: any = await handler(
+    {
+      path: '/api/ai/copilot',
+      httpMethod: 'GET',
+      headers: {},
+      isBase64Encoded: false,
+    } as any,
+    {} as any
+  );
+  assert(netlifyAiCopilotGet.statusCode === 405, 'Netlify handler rejects GET /api/ai/copilot with 405 Method Not Allowed');
+
+  // Non-business refusal via API
+  const nonBusinessRes: any = await handler(
+    {
+      path: '/api/ai/copilot',
+      httpMethod: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'tell me a fantasy story about magical dragons', demoMode: true }),
+      isBase64Encoded: false,
+    } as any,
+    {} as any
+  );
+  assert(nonBusinessRes.statusCode === 200, 'Non-business inquiry handled with 200 polite refusal');
+  const nonBusinessBody = JSON.parse(nonBusinessRes.body);
+  assert(nonBusinessBody.policyRefusal === true, 'Refusal payload includes policyRefusal: true');
+  assert(nonBusinessBody.text.includes('strictly confined to commercial business management'), 'Refusal enforces strict business boundary');
+  assert(nonBusinessBody.provider === 'openrouter', 'Refusal payload provider is openrouter');
+
 
   console.log('\n==================================================');
   console.log(`TEST RESULTS: ${passed} PASSED, ${failed} FAILED`);

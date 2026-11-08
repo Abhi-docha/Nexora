@@ -127,13 +127,13 @@ service cloud.firestore {
       allow create: if isOwner(userId) &&
         isValidId(userId) &&
         incoming().uid == request.auth.uid &&
-        incoming().email is string && incoming().email.size() <= 200 &&
+        (!('email' in incoming()) || incoming().email == null || (incoming().email is string && incoming().email.size() <= 200)) &&
         incoming().accountStatus in ['ACTIVE', 'SUSPENDED'] &&
         (!('isPlatformAdmin' in incoming()) || incoming().isPlatformAdmin == false);
 
       allow update: if (isOwner(userId) &&
         incoming().uid == existing().uid &&
-        incoming().email == existing().email &&
+        (!('email' in incoming()) || incoming().email == null || !('email' in existing()) || incoming().email == existing().email) &&
         (!('isPlatformAdmin' in incoming()) || incoming().isPlatformAdmin == existing().isPlatformAdmin) &&
         (!('accountStatus' in incoming()) || incoming().accountStatus == existing().accountStatus)
       ) || isPlatformAdmin();
@@ -180,8 +180,13 @@ service cloud.firestore {
     // Tenant boundaries are enforced strictly by path and membership.
     // =========================================================================
     match /organizations/{orgId} {
-      allow get: if isOrgMember(orgId) || isPlatformAdmin();
-      allow list: if isPlatformAdmin();
+      allow get: if isSignedIn() && (
+        resource == null ||
+        resource.data.ownerUid == request.auth.uid ||
+        isOrgMember(orgId) ||
+        isPlatformAdmin()
+      );
+      allow list: if isPlatformAdmin() || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
 
       allow create: if isSignedIn() &&
         isValidId(orgId) &&

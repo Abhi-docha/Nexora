@@ -12,7 +12,7 @@ import { db, verifyOrgBillingAccess } from '../auth/firebaseAuth';
 export async function handleChangeSubscriptionPlan(
   auth: AuthContext,
   payload: ChangePlanRequest
-): Promise<{ success: boolean; targetPlanCode: PlanCode; message: string }> {
+): Promise<{ success: boolean; targetPlanCode: PlanCode; message: string; requiresCheckout?: boolean; checkoutUrl?: string }> {
   const { orgId, targetPlanCode } = payload;
   if (!orgId || !targetPlanCode) {
     throw new Error('Missing orgId or targetPlanCode');
@@ -21,15 +21,34 @@ export async function handleChangeSubscriptionPlan(
   const orgData = await verifyOrgBillingAccess(auth, orgId);
   const currentPlan = (orgData.planId || 'FREE').toUpperCase();
 
-  if (currentPlan === targetPlanCode) {
-    throw new Error(`Organization is already subscribed to the ${targetPlanCode} plan.`);
+  let subscriptionId = orgData.dodoSubscriptionId;
+  if (!subscriptionId) {
+    try {
+      const billingSnap = await db.collection('organizations').doc(orgId).collection('billing').doc('current').get();
+      subscriptionId = billingSnap.data()?.subscriptionId;
+    } catch {
+      // non-blocking
+    }
   }
 
-  const subscriptionId = orgData.dodoSubscriptionId;
+  // If no active Dodo subscription exists, seamlessly create a checkout session for the target plan
   if (!subscriptionId) {
-    throw new Error(
-      `No active Dodo subscription ID found for organization ${orgId}. If upgrading from FREE, please start via checkout.`
-    );
+    const { handleCreateCheckoutSession } = await import('./checkout');
+    const checkoutResult = await handleCreateCheckoutSession(auth, {
+      orgId,
+      planCode: targetPlanCode,
+    });
+    return {
+      success: true,
+      targetPlanCode,
+      message: `No active subscription found. Redirecting to checkout for ${targetPlanCode}.`,
+      requiresCheckout: true,
+      checkoutUrl: checkoutResult.checkoutUrl,
+    };
+  }
+
+  if (currentPlan === targetPlanCode) {
+    throw new Error(`Organization is already subscribed to the ${targetPlanCode} plan.`);
   }
 
   const targetProductId = getDodoProductIdForPlan(targetPlanCode);
@@ -69,10 +88,18 @@ export async function handleChangeSubscriptionPlan(
 export async function handlePreviewPlanChange(
   auth: AuthContext,
   payload: { orgId: string; targetPlanCode: PlanCode }
-): Promise<{ amountDue: number; targetPriceInr: number; currency: string }> {
+): Promise<{ amountDue: number; targetPriceInr: number; currency: string; isNewCheckout?: boolean }> {
   const { orgId, targetPlanCode } = payload;
   const orgData = await verifyOrgBillingAccess(auth, orgId);
-  const subscriptionId = orgData.dodoSubscriptionId;
+  let subscriptionId = orgData.dodoSubscriptionId;
+  if (!subscriptionId) {
+    try {
+      const billingSnap = await db.collection('organizations').doc(orgId).collection('billing').doc('current').get();
+      subscriptionId = billingSnap.data()?.subscriptionId;
+    } catch {
+      // non-blocking
+    }
+  }
   const targetDef = getPlanDefinition(targetPlanCode);
 
   if (!subscriptionId) {
@@ -80,6 +107,7 @@ export async function handlePreviewPlanChange(
       amountDue: targetDef.monthlyPriceInr,
       targetPriceInr: targetDef.monthlyPriceInr,
       currency: 'INR',
+      isNewCheckout: true,
     };
   }
 

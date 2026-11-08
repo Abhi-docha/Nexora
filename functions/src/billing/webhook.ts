@@ -100,7 +100,16 @@ export function verifyAndParseDodoWebhook(
     }
   } else {
     // If webhook key is NOT configured in secrets:
-    // Unsigned requests must be rejected safely
+    // Reject in production to prevent forged inbound billing events
+    const isTestMode = process.env.NODE_ENV === 'test' || process.env.ALLOW_UNSAFE_WEBHOOK === 'true';
+    if (!isTestMode) {
+      throw new WebhookVerificationError(
+        'DODO_PAYMENTS_WEBHOOK_KEY must be configured in environment secrets to verify webhook authenticity',
+        500,
+        'WEBHOOK_KEY_NOT_CONFIGURED'
+      );
+    }
+
     if (!msgSignature) {
       throw new WebhookVerificationError(
         'Missing webhook signature and DODO_PAYMENTS_WEBHOOK_KEY is not configured',

@@ -920,6 +920,37 @@ export const handler: Handler = async (event: HandlerEvent, context: any) => {
       }
     }
 
+    /*
+     * ------------------------------------------------------------
+     * AI COPILOT & STATUS / HEALTH
+     * ------------------------------------------------------------
+     */
+    if (route === '/ai/copilot') {
+      if (method !== 'POST') {
+        return json(405, {
+          error: 'Method Not Allowed',
+          code: 'METHOD_NOT_ALLOWED',
+        });
+      }
+      const { handleAiCopilotRequest } = await import('../../functions/src/ai/copilotService');
+      const authHeader = getHeader(event, 'authorization');
+      const body = getBody(event);
+      const result = await handleAiCopilotRequest(authHeader, body);
+      return json(200, result);
+    }
+
+    if (route === '/ai/status' || route === '/ai/health') {
+      if (method !== 'GET') {
+        return json(405, {
+          error: 'Method Not Allowed',
+          code: 'METHOD_NOT_ALLOWED',
+        });
+      }
+      const { handleAiStatus } = await import('../../functions/src/ai/copilotService');
+      const result = await handleAiStatus();
+      return json(200, result);
+    }
+
     return json(404, {
       error: `Route not found: ${method} ${route}`,
       code: 'ROUTE_NOT_FOUND',
